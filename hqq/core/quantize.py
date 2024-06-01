@@ -111,6 +111,7 @@ class Quantizer:
             zero = torch.round(zero)
 
         # Fine-tune weights
+        # if False:
         if optimize:
             W_q, scale, zero = Quantizer.optimize_weights(
                 tensor=W,

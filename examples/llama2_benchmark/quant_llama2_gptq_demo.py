@@ -9,9 +9,10 @@ hf_auth    = None #HuggingFace token
 cache_path = ''   #cache directory to store data
 
 #Chose a model
-model_id  = "meta-llama/Llama-2-7b-hf" 
-#model_id  = "meta-llama/Llama-2-13b-hf" 
-#model_id  = "meta-llama/Llama-2-70b-hf" 
+# model_id  = "meta-llama/Meta-Llama-3-8B"
+# model_id  = "meta-llama/Llama-2-7b-hf"
+model_id  = "meta-llama/Llama-2-13b-hf"
+#model_id  = "meta-llama/Llama-2-70b-hf"
 
 #GPTQ settings
 ######################################################################################
@@ -30,7 +31,7 @@ def prepare_model(model, tokenizer, n_samples=1024, max_tokens=512, use_triton=T
 	tokenized_data = torch.cat([tokenizer(data[i]['text'], return_tensors='pt').input_ids for i in tqdm(range(len(data)))], axis=-1) #~536K tokens
 
 	# Format tokenized examples
-	random.seed(1) 
+	random.seed(1)
 	examples_ids = []
 	for _ in range(n_samples):
 		i              = random.randint(0, tokenized_data.shape[1] - max_tokens - 1)
@@ -41,7 +42,7 @@ def prepare_model(model, tokenizer, n_samples=1024, max_tokens=512, use_triton=T
 
 	print('Using ' + str(len(examples_ids)) + ' samples for calibration.')
 	model.quantize(examples_ids, batch_size=1, use_triton=use_triton)
-	model = model.cuda(); 
+	model = model.cuda();
 	with torch.no_grad(): x = model(input_ids.to('cuda'));
 	del examples_ids, x
 	torch.cuda.empty_cache()
@@ -50,19 +51,19 @@ def prepare_model(model, tokenizer, n_samples=1024, max_tokens=512, use_triton=T
 
 #quantize_config = BaseQuantizeConfig(bits=8, group_size=128, damp_percent=0.01, desc_act=False); use_triton=True;
 #quantize_config = BaseQuantizeConfig(bits=4, group_size=128, damp_percent=0.01, desc_act=False); use_triton=True;
-quantize_config = BaseQuantizeConfig(bits=4, group_size=64, damp_percent=0.01, desc_act=False); use_triton=True;
+#quantize_config = BaseQuantizeConfig(bits=4, group_size=64, damp_percent=0.01, desc_act=False); use_triton=True;
 #quantize_config = BaseQuantizeConfig(bits=3, group_size=128, damp_percent=0.01, desc_act=False); use_triton=False;
-#quantize_config = BaseQuantizeConfig(bits=3, group_size=64, damp_percent=0.01, desc_act=False); use_triton=False;
+quantize_config = BaseQuantizeConfig(bits=3, group_size=64, damp_percent=0.01, desc_act=False); use_triton=False;
 #quantize_config = BaseQuantizeConfig(bits=2, group_size=64, damp_percent=0.01, desc_act=False); use_triton=True;
 
 tokenizer = transformers.AutoTokenizer.from_pretrained(model_id,           use_auth_token=hf_auth)
-model     = AutoGPTQForCausalLM.from_pretrained(model_id, quantize_config, use_auth_token=hf_auth, cache_dir=cache_path)
+model     = AutoGPTQForCausalLM.from_pretrained(model_id, quantize_config, use_auth_token=hf_auth)
 t1 = time.time()
 model = prepare_model(model, tokenizer, use_triton=use_triton)
 t2 = time.time()
 print('Took ' + str(t2-t1) + ' seconds to quantize the model with GPTQ')
 
-#Evaluate the quantized model 
+#Evaluate the quantized model
 ######################################################################################
 from eval_model import eval_wikitext2
 
