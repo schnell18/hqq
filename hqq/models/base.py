@@ -19,6 +19,7 @@ from ..core.peft import PeftUtils, _HQQ_LORA_CLASSES
 from ..backends.torchao import HQQLinearTorchWeightOnlynt4
 
 from safetensors.torch import save_file
+from ..utils.optimizer import find_optimal_configs
 
 _HQQ_BACKEND_CLASSES = [HQQLinearTorchWeightOnlynt4]
 
@@ -278,9 +279,21 @@ class BaseHQQModel:
         # Set linear tags automatically
         cls.setup_model(model)
 
-        # Use the same quantization config for all linear layers. Use None to skip quantizing a specfic layer.
+        if 'budget' in quant_config:
+            budget = quant_config.pop('budget')
+        if 'mixed' in quant_config:
+            mixed = quant_config.pop('mixed')
+            if mixed:
+                metrics_file = quant_config.pop('quant_metrics_file')
+                optimal_configs = find_optimal_configs(
+                    metrics_file, budget, time_limit=120, verbose=True)
+                model.optimal_configs = optimal_configs
+
+        # Use the same quantization config for all linear layers.
+        # Use None to skip quantizing a specfic layer.
         if True in [(key in model.linear_tags) for key in quant_config.keys()]:
-            # If the user doesn't specify a key from get_linear_tags, the layer is not quantized via (key, None)
+            # If the user doesn't specify a key from get_linear_tags,
+            # the layer is not quantized via (key, None)
             patch_params = {key: None for key in model.linear_tags}
             patch_params.update(quant_config)
         else:
@@ -545,7 +558,7 @@ class BaseHQQModel:
     def save_to_safetensors(
         cls, model, save_dir: str, num_blocks_per_file: int = 5, verbose: bool = True
      ):
-         
+
         def generate_file_list(num_files):
             files = [
                 f"model-{i:05d}-of-{num_files:05d}.safetensors"
@@ -557,9 +570,9 @@ class BaseHQQModel:
             num_layers = 0
 
             def update_num_layers(model):
-                nonlocal num_layers 
+                nonlocal num_layers
                 for name, layer in model.named_children():
-                    if isinstance(layer, (HQQLinear, torch.nn.Linear)): 
+                    if isinstance(layer, (HQQLinear, torch.nn.Linear)):
                         num_layers += 1
                     else:
                         update_num_layers(layer)
@@ -581,7 +594,7 @@ class BaseHQQModel:
         #Save config
         if(hasattr(model.config, '_attn_implementation_autoset')):
             del model.config._attn_implementation_autoset
-             
+
         model.config.to_json_file(save_dir + "config.json")
 
         tensors = model.state_dict()

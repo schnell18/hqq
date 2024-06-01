@@ -123,7 +123,7 @@ class Quantizer:
 
         # Note: here we work with the inverse of the scale to avoid division and quantize instead via W*scale + zero, the scale is inverted later on.
         denom = (_max - _min)
-        scale = (max_v / denom)  
+        scale = (max_v / denom)
         scale = torch.where(denom.abs() <= 1e-4, torch.full_like(scale, 1.0), scale) #Avoid small denom values
         scale = scale.clamp(max=2e4) # clamp to avoid half-precision problems
         zero = -_min * scale
@@ -133,6 +133,7 @@ class Quantizer:
             zero = torch.round(zero)
 
         # Fine-tune weights
+        # if False:
         if optimize:
             W_q, scale, zero = Quantizer.optimize_weights(
                 tensor=W,
@@ -444,7 +445,7 @@ class HQQLinear(nn.Module):
                     if (self.quant_config["weight_quant_params"]["axis"] == 1)
                     else self.linear_layer.out_features
                 )
-                
+
             self.quantize(self.linear_layer.weight.data, **self.quant_config)
             self.bias = (
                 None
@@ -689,20 +690,20 @@ class HQQLinear(nn.Module):
         unexpected_keys,
         error_msgs,
     ):
-        
+
         layer_state_dict = {}
         for key in self.state_dict_keys():
             if(prefix + key in state_dict):
                 layer_state_dict[key] = state_dict.pop(prefix + key)
             else:
                 if(key not in ['bias']):
-                    missing_keys.append(prefix + key)                    
+                    missing_keys.append(prefix + key)
 
         if 'W_q' in layer_state_dict:
             layer_state_dict['W_q'] = nn.Parameter(layer_state_dict['W_q'], requires_grad=False)
             self.load_state_dict(layer_state_dict, strict=strict)
         else:
-            missing_keys.append(prefix + "W_q")  
+            missing_keys.append(prefix + "W_q")
 
     def load_state_dict(self, state_dict, strict=True, assign=False):
         if "encoded_state_dict" in state_dict:
@@ -1080,6 +1081,8 @@ def hqq_base_quant_config(
     offload_meta: bool = False,  # meta-data should be quantized with the same settings to use offload_meta
     view_as_float: bool = False,
     axis: int = 1,
+    mixed: bool = False, # Auto tune nbits and group_size according to weight distribution
+    budget: float = 4.0, # overall quantization budget as bits per parameter
 ):
     assert (
         nbits in Quantizer.SUPPORTED_BITS
@@ -1147,6 +1150,8 @@ def hqq_base_quant_config(
         "scale_quant_params": scale_quant_params,
         "zero_quant_params": zero_quant_params,
         "offload_meta": offload_meta,
+        "mixed": mixed,
+        "budget": budget,
     }
 
 
