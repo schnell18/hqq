@@ -52,7 +52,10 @@ class LLamaPatch(BasePatch):
                 setattr(
                     self_attn_obj,
                     item,
-                    patch_fct(getattr(self_attn_obj, item), quant_config)
+                    patch_fct(
+                        getattr(self_attn_obj, item),
+                        cls.get_optimal_quant_config(i, patch_params, f"self_attn.{item}")
+                    )
                 )
             mlp_obj = layers[i].mlp
             for item in mlps:
@@ -60,20 +63,33 @@ class LLamaPatch(BasePatch):
                 setattr(
                     mlp_obj,
                     item,
-                    patch_fct(getattr(mlp_obj, item), quant_config)
+                    patch_fct(
+                        getattr(mlp_obj, item),
+                        cls.get_optimal_quant_config(i, patch_params, f"mlp.{item}")
+                    )
                 )
 
     @classmethod
-    def get_optimal_config(cls, layer_no: int, global_quant_config: dict) -> dict:
-        if global_quant_config is None:
+    def get_optimal_quant_config(cls, layer_no: int, global_quant_config: dict, item: str) -> dict:
+        config = global_quant_config[item]
+        if config is None:
             quant_config = BaseQuantizeConfig()
         else:
-            quant_config = copy.deepcopy(global_quant_config)
-        auto_tune = quant_config.pop('auto_tune')
-        if auto_tune:
-            hyper_params = [ (4, 64), (3, 64), (6, 128) ]
-            quant_config['weight_quant_params']['nbits'] = hyper_params[layer_no % 3][0]
-            quant_config['weight_quant_params']['group_size'] =  hyper_params[layer_no % 3][1]
+            quant_config = copy.deepcopy(config)
+
+        match item:
+            case "self_attn.q_proj":
+                quant_config['weight_quant_params']['nbits'] = 3
+                quant_config['weight_quant_params']['group_size'] = 32
+            case "self_attn.k_proj":
+                if i > 1:
+                    quant_config['weight_quant_params']['nbits'] = 3
+                    quant_config['weight_quant_params']['group_size'] = 32
+            case "self_attn.v_proj":
+                if i < 30:
+                    quant_config['weight_quant_params']['nbits'] = 3
+                    quant_config['weight_quant_params']['group_size'] = 32
+
         return quant_config
 
 
