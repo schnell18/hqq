@@ -1,7 +1,10 @@
 # Written by Dr. Hicham Badri @Mobius Labs GmbH - 2023
 #####################################################
+import copy
+
 from ..base import BasePatch
 from .base import BaseHQQHFModel
+from ...core.quantize import BaseQuantizeConfig
 from tqdm import tqdm
 
 
@@ -40,28 +43,38 @@ class LLamaPatch(BasePatch):
     def patch_linearlayers(cls, model, patch_fct, patch_params, verbose=True):
         base_model = model.model
         layers = base_model.layers
+        self_attns = ['q_proj', 'v_proj', 'k_proj', 'o_proj']
+        mlps = ['gate_proj', 'up_proj', 'down_proj']
         for i in tqdm(range(len(layers)), disable=not verbose):
-            layers[i].self_attn.q_proj = patch_fct(
-                layers[i].self_attn.q_proj, patch_params["self_attn.q_proj"]
-            )
-            layers[i].self_attn.k_proj = patch_fct(
-                layers[i].self_attn.k_proj, patch_params["self_attn.k_proj"]
-            )
-            layers[i].self_attn.v_proj = patch_fct(
-                layers[i].self_attn.v_proj, patch_params["self_attn.v_proj"]
-            )
-            layers[i].self_attn.o_proj = patch_fct(
-                layers[i].self_attn.o_proj, patch_params["self_attn.o_proj"]
-            )
-            layers[i].mlp.gate_proj = patch_fct(
-                layers[i].mlp.gate_proj, patch_params["mlp.gate_proj"]
-            )
-            layers[i].mlp.up_proj = patch_fct(
-                layers[i].mlp.up_proj, patch_params["mlp.up_proj"]
-            )
-            layers[i].mlp.down_proj = patch_fct(
-                layers[i].mlp.down_proj, patch_params["mlp.down_proj"]
-            )
+            self_attn_obj = layers[i].self_attn
+            for item in self_attns:
+                quant_config = cls.get_optimal_config(i, patch_params[f"self_attn.{item}"])
+                setattr(
+                    self_attn_obj,
+                    item,
+                    patch_fct(getattr(self_attn_obj, item), quant_config)
+                )
+            mlp_obj = layers[i].mlp
+            for item in mlps:
+                quant_config = cls.get_optimal_config(i, patch_params[f"mlp.{item}"])
+                setattr(
+                    mlp_obj,
+                    item,
+                    patch_fct(getattr(mlp_obj, item), quant_config)
+                )
+
+    @classmethod
+    def get_optimal_config(cls, layer_no: int, global_quant_config: dict) -> dict:
+        if global_quant_config is None:
+            quant_config = BaseQuantizeConfig()
+        else:
+            quant_config = copy.deepcopy(global_quant_config)
+        auto_tune = quant_config.pop('auto_tune')
+        if auto_tune:
+            hyper_params = [ (4, 64), (3, 64), (6, 128) ]
+            quant_config['weight_quant_params']['nbits'] = hyper_params[layer_no % 3][0]
+            quant_config['weight_quant_params']['group_size'] =  hyper_params[layer_no % 3][1]
+        return quant_config
 
 
 class LlamaHQQ(LLamaPatch, BaseHQQHFModel):

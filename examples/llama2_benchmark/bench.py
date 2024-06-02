@@ -26,6 +26,7 @@ HHQ_CONFIGS = [
    ("b4g128", HQQQuantConfig(nbits=4, group_size=128)),
    ("b3g64",  HQQQuantConfig(nbits=3, group_size=64)),
    ("b3g128", HQQQuantConfig(nbits=3, group_size=128)),
+   ("auto",   HQQQuantConfig(auto_tune=True)),
 ]
 
 AWQ_CONFIGS = [
@@ -41,13 +42,6 @@ GPTQ_CONFIGS = [
     ("b4g128", GPTQQuantConfig(bits=4, group_size=64, damp_percent=0.01, desc_act=False)),
     ("b3g64",  GPTQQuantConfig(bits=3, group_size=64, damp_percent=0.01, desc_act=False)),
 ]
-
-def main():
-    # experiment_quantize_all()
-    # experiment_debug()
-    # experiment_awq()
-    # experiment_gptq()
-    experiment_hqq()
 
 def experiment_debug():
     models = [
@@ -364,6 +358,13 @@ def cleanup(model):
 
 def get_memory_metrics():
     return torch.cuda.memory_allocated(), torch.cuda.memory_reserved()
+
+def main():
+    # experiment_quantize_all()
+    # experiment_debug()
+    # experiment_awq()
+    # experiment_gptq()
+    experiment_hqq()
 
 
 if __name__ == "__main__":

@@ -878,6 +878,7 @@ def hqq_base_quant_config(
     offload_meta: bool = False,  # meta-data should be quantized with the same settings to use offload_meta
     view_as_float: bool = False,
     axis: int = 0,
+    auto_tune = False, # Auto tune nbits and group_size according to weight distribution
 ):
     assert (
         nbits in Quantizer.SUPPORTED_BITS
@@ -929,6 +930,7 @@ def hqq_base_quant_config(
         "scale_quant_params": scale_quant_params,
         "zero_quant_params": zero_quant_params,
         "offload_meta": offload_meta,
+        "auto_tune": auto_tune,
     }
 
 
