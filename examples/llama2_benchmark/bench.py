@@ -15,13 +15,39 @@ from hqq.engine.hf import HQQModelForCausalLM
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM
 
+ALL_MODELS = [
+    "meta-llama/Meta-Llama-3-8B",
+    "meta-llama/Llama-2-7b-hf",
+    "meta-llama/Llama-2-13b-hf",
+]
+
+HHQ_CONFIGS = [
+   ("b4g64",  HQQQuantConfig(nbits=4, group_size=64)),
+   ("b4g128", HQQQuantConfig(nbits=4, group_size=128)),
+   ("b3g64",  HQQQuantConfig(nbits=3, group_size=64)),
+   ("b3g128", HQQQuantConfig(nbits=3, group_size=128)),
+]
+
+AWQ_CONFIGS = [
+    ("b4g64", {"w_bit": 4, "q_group_size": 64, "zero_point": True, 'version':'GEMM'}),
+    ("b4g128", {"w_bit": 4, "q_group_size": 128, "zero_point": True, 'version':'GEMM'}),
+    # 3-bit not supported by AutoAWQ right now
+    #("b3g64", {"w_bit": 3, "q_group_size": 64, "zero_point": True, 'version':'gemv_fast'}),
+    #("b3g128", {"w_bit": 3, "q_group_size": 128, "zero_point": True, 'version':'gemv_fast'}),
+]
+
+GPTQ_CONFIGS = [
+    ("b4g64",  GPTQQuantConfig(bits=4, group_size=64, damp_percent=0.01, desc_act=False)),
+    ("b4g128", GPTQQuantConfig(bits=4, group_size=64, damp_percent=0.01, desc_act=False)),
+    ("b3g64",  GPTQQuantConfig(bits=3, group_size=64, damp_percent=0.01, desc_act=False)),
+]
 
 def main():
-    experiment_quantize_all()
+    # experiment_quantize_all()
     # experiment_debug()
-    #experiment_awq()
+    # experiment_awq()
     # experiment_gptq()
-    # experiment_gptq_awq_hgg()
+    experiment_hqq()
 
 def experiment_debug():
     models = [
@@ -45,36 +71,23 @@ def experiment_debug():
     )
 
 def experiment_quantize_all():
-    models = [
-        "meta-llama/Meta-Llama-3-8B",
-        "meta-llama/Llama-2-7b-hf",
-        "meta-llama/Llama-2-13b-hf"
-    ]
+    models = ALL_MODELS
     tasks = {
         'HQQ': {
            "create_fn": create_hqq_model,
            "quantize_fn": quantize_hqq_model,
-           "configs": [
-               ("b4g64", HQQQuantConfig(nbits=4, group_size=64)),
-               ("b3g64", HQQQuantConfig(nbits=3, group_size=64)),
-           ]
+           "configs": HHQ_CONFIGS,
         },
         'AWQ': {
             "create_fn": create_awq_model,
             "quantize_fn": quantize_awq_model,
-            "configs": [
-                ("b4g64", {"w_bit": 4, "q_group_size": 64, "zero_point": True, 'version':'GEMM'}),
-                ("b4g128", {"w_bit": 4, "q_group_size": 128, "zero_point": True, 'version':'GEMM'}),
-            ]
+            "configs": AWQ_CONFIGS,
+
         },
         'GPTQ': {
             "create_fn": create_gptq_model,
             "quantize_fn": quantize_gptq_model,
-            "configs": [
-                ("b4g64", GPTQQuantConfig(bits=4, group_size=64, damp_percent=0.01, desc_act=False)),
-                ("b4g128", GPTQQuantConfig(bits=4, group_size=64, damp_percent=0.01, desc_act=False)),
-                ("b3g64", GPTQQuantConfig(bits=3, group_size=64, damp_percent=0.01, desc_act=False)),
-            ]
+            "configs": GPTQ_CONFIGS,
         },
     }
     do_expermient(
@@ -86,20 +99,12 @@ def experiment_quantize_all():
     )
 
 def experiment_gptq():
-    models = [
-        "meta-llama/Meta-Llama-3-8B",
-        "meta-llama/Llama-2-7b-hf",
-        "meta-llama/Llama-2-13b-hf"
-    ]
+    models = ALL_MODELS
     tasks = {
         'GPTQ': {
             "create_fn": create_gptq_model,
             "quantize_fn": quantize_gptq_model,
-            "configs": [
-                ("b4g64", GPTQQuantConfig(bits=4, group_size=64, damp_percent=0.01, desc_act=False)),
-                ("b4g128", GPTQQuantConfig(bits=4, group_size=64, damp_percent=0.01, desc_act=False)),
-                ("b3g64", GPTQQuantConfig(bits=3, group_size=64, damp_percent=0.01, desc_act=False)),
-            ]
+            "configs": GPTQ_CONFIGS,
         },
     }
     do_expermient(
@@ -110,19 +115,12 @@ def experiment_gptq():
     )
 
 def experiment_awq():
-    models = [
-        "meta-llama/Meta-Llama-3-8B",
-        "meta-llama/Llama-2-7b-hf",
-        "meta-llama/Llama-2-13b-hf"
-    ]
+    models = ALL_MODELS
     tasks = {
         'AWQ': {
             "create_fn": create_awq_model,
             "quantize_fn": quantize_awq_model,
-            "configs": [
-                ("b4g64", {"w_bit": 4, "q_group_size": 64, "zero_point": True, 'version':'GEMM'}),
-                ("b4g128", {"w_bit": 4, "q_group_size": 128, "zero_point": True, 'version':'GEMM'}),
-            ]
+            "configs": AWQ_CONFIGS,
         }
     }
     do_expermient(
@@ -132,20 +130,13 @@ def experiment_awq():
         save_dir = "snapshots"
     )
 
-def experiment_hgg():
-    models = [
-        "meta-llama/Meta-Llama-3-8B",
-        "meta-llama/Llama-2-7b-hf",
-        "meta-llama/Llama-2-13b-hf"
-    ]
+def experiment_hqq():
+    models = ALL_MODELS
     tasks = {
         'HQQ': {
            "create_fn": create_hqq_model,
            "quantize_fn": quantize_hqq_model,
-           "configs": [
-               ("b4g64", HQQQuantConfig(nbits=4, group_size=64)),
-               ("b3g64", HQQQuantConfig(nbits=3, group_size=64)),
-           ]
+           "configs": HHQ_CONFIGS,
         },
     }
     do_expermient(
@@ -156,12 +147,7 @@ def experiment_hgg():
     )
 
 def experiment_fp16_baseline():
-    models = [
-        "meta-llama/Meta-Llama-3-8B",
-        "meta-llama/Llama-2-7b-hf",
-        "meta-llama/Llama-2-13b-hf"
-    ]
-
+    models = ALL_MODELS
     tasks = {
         'FP16': {
            "create_fn": create_fp16_model,
