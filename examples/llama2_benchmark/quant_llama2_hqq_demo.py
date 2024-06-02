@@ -33,8 +33,8 @@ print('Took ' + str(t2-t1) + ' seconds to quantize the model with HQQ')
 
 #Evaluate the quantized model
 ######################################################################################
-from eval_model import eval_wikitext2, eval_c4, eval_ptb
-eval_wikitext2(model, tokenizer, verbose=True)
-eval_c4(model, tokenizer, verbose=True)
-eval_ptb(model, tokenizer, verbose=True)
+# from eval_model import eval_wikitext2, eval_c4, eval_ptb
+# eval_wikitext2(model, tokenizer, verbose=True)
+# eval_c4(model, tokenizer, verbose=True)
+# eval_ptb(model, tokenizer, verbose=True)
 
