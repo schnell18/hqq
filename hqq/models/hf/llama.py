@@ -48,47 +48,43 @@ class LLamaPatch(BasePatch):
         for i in tqdm(range(len(layers)), disable=not verbose):
             self_attn_obj = layers[i].self_attn
             for item in self_attns:
-                quant_config = cls.get_optimal_config(i, patch_params[f"self_attn.{item}"])
+                quant_config = cls.get_optimal_config(i, patch_params, f"self_attn.{item}")
                 setattr(
                     self_attn_obj,
                     item,
-                    patch_fct(
-                        getattr(self_attn_obj, item),
-                        cls.get_optimal_quant_config(i, patch_params, f"self_attn.{item}")
-                    )
+                    patch_fct(getattr(self_attn_obj, item), quant_config)
                 )
             mlp_obj = layers[i].mlp
             for item in mlps:
-                quant_config = cls.get_optimal_config(i, patch_params[f"mlp.{item}"])
+                quant_config = cls.get_optimal_config(i, patch_params, f"mlp.{item}")
                 setattr(
                     mlp_obj,
                     item,
-                    patch_fct(
-                        getattr(mlp_obj, item),
-                        cls.get_optimal_quant_config(i, patch_params, f"mlp.{item}")
-                    )
+                    patch_fct(getattr(mlp_obj, item), quant_config)
                 )
 
     @classmethod
-    def get_optimal_quant_config(cls, layer_no: int, global_quant_config: dict, item: str) -> dict:
+    def get_optimal_config(cls, layer_no: int, global_quant_config: dict, item: str) -> dict:
         config = global_quant_config[item]
         if config is None:
             quant_config = BaseQuantizeConfig()
         else:
             quant_config = copy.deepcopy(config)
 
-        match item:
-            case "self_attn.q_proj":
-                quant_config['weight_quant_params']['nbits'] = 3
-                quant_config['weight_quant_params']['group_size'] = 32
-            case "self_attn.k_proj":
-                if i > 1:
+        auto_tune = quant_config.pop("auto_tune")
+        if auto_tune:
+            match item:
+                case "self_attn.q_proj":
                     quant_config['weight_quant_params']['nbits'] = 3
                     quant_config['weight_quant_params']['group_size'] = 32
-            case "self_attn.v_proj":
-                if i < 30:
-                    quant_config['weight_quant_params']['nbits'] = 3
-                    quant_config['weight_quant_params']['group_size'] = 32
+                case "self_attn.k_proj":
+                    if layer_no > 1:
+                        quant_config['weight_quant_params']['nbits'] = 3
+                        quant_config['weight_quant_params']['group_size'] = 32
+                case "self_attn.v_proj":
+                    if layer_no < 30:
+                        quant_config['weight_quant_params']['nbits'] = 3
+                        quant_config['weight_quant_params']['group_size'] = 32
 
         return quant_config
 

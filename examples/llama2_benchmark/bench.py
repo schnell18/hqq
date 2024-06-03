@@ -1,6 +1,9 @@
-import logging, gc, time
+import gc
+import glob
+import logging
 import os
 import pandas as pd
+import time
 import torch
 import transformers
 
@@ -46,22 +49,19 @@ GPTQ_CONFIGS = [
 def experiment_debug():
     models = [
         "meta-llama/Llama-2-7b-hf",
-        "meta-llama/Meta-Llama-3-8B",
     ]
     tasks = {
-        'GPTQ': {
-            "create_fn": create_gptq_model,
-            "quantize_fn": quantize_gptq_model,
-            "configs": [
-                ("b4g64", GPTQQuantConfig(bits=4, group_size=64, damp_percent=0.01, desc_act=False)),
-            ]
+        'HQQ': {
+            "create_fn": create_hqq_model,
+            "quantize_fn": quantize_hqq_model,
+            "configs": HHQ_CONFIGS[-1:]
         },
     }
     do_expermient(
-        "debug_two_devices",
+        "debug_hqq_auto",
         models,
         tasks,
-        save_dir = "snapshots"
+        save_dir = "snapshots-hqq"
     )
 
 def experiment_quantize_all():
@@ -222,14 +222,20 @@ def do_expermient(
                 #Evaluate the quantized model
                 if not quantize_only:
                     metric = eval_ppls(model, tokenizer, metric)
-                metrics.append(metric)
+                save_partial_metric(experiment_name, kind, model_id, config[0], metric)
                 cleanup(model)
 
-    # create a pandas Dataframe
+    # combine metrics
+    combine_metrics(experiment_name)
+
+def save_partial_metric(experiment_name, kind, model_id, config, metric):
+    metrics = [metric]
     df = pd.DataFrame(metrics)
-    ts_str = datetime.now().strftime("%Y%m%d%H%M%S")
-    file_name = f"result-{experiment_name}-{ts_str}.xlsx"
-    df.to_excel(
+    result_dir = f"results/{experiment_name}"
+    os.makedirs(result_dir, exist_ok=True)
+    model_short_id = model_id.split('/')[1]
+    file_name = f"{result_dir}/partial-{kind}-{model_short_id}-{config}.csv"
+    df.to_csv(
         file_name,
         columns=[
             "method", "model", "config", "quant_duration",
@@ -241,6 +247,17 @@ def do_expermient(
         ],
         index=False
     )
+
+def combine_metrics(experiment_name):
+    dfs = []
+    iters = glob.iglob(f"./results/{experiment_name}/partial-*.csv")
+    for it in iters:
+        df = pd.read_csv(it)
+        dfs.append(df)
+    combined = pd.concat(dfs)
+    ts_str = datetime.now().strftime("%Y%m%d%H%M%S")
+    file_name = f"results/result-{experiment_name}-{ts_str}.xlsx"
+    combined.to_excel(file_name, index=False)
 
 def eval_ppls(model, tokenizer, metric):
     ppl_wikitext, duration_wikitext = eval_wikitext2(model, tokenizer, verbose=True)
@@ -364,7 +381,9 @@ def main():
     # experiment_debug()
     # experiment_awq()
     # experiment_gptq()
-    experiment_hqq()
+    # experiment_hqq()
+    # experiment_debug()
+    experiment_fp16_baseline()
 
 
 if __name__ == "__main__":
