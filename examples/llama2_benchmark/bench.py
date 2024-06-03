@@ -64,6 +64,31 @@ def experiment_debug():
         save_dir = "snapshots-hqq"
     )
 
+def experiment_eval_all():
+    models = ALL_MODELS
+    tasks = {
+        'HQQ': {
+           "create_fn": create_hqq_model,
+           "quantize_fn": quantize_hqq_model,
+           "configs": HHQ_CONFIGS,
+        },
+        'AWQ': {
+            "create_fn": create_awq_model,
+            "quantize_fn": quantize_awq_model,
+            "configs": AWQ_CONFIGS,
+        },
+        'GPTQ': {
+            "create_fn": create_gptq_model,
+            "quantize_fn": quantize_gptq_model,
+            "configs": GPTQ_CONFIGS,
+        },
+    }
+    do_expermient(
+        "eval_all_benchmark",
+        models,
+        tasks,
+    )
+
 def experiment_quantize_all():
     models = ALL_MODELS
     tasks = {
@@ -76,7 +101,6 @@ def experiment_quantize_all():
             "create_fn": create_awq_model,
             "quantize_fn": quantize_awq_model,
             "configs": AWQ_CONFIGS,
-
         },
         'GPTQ': {
             "create_fn": create_gptq_model,
@@ -88,8 +112,6 @@ def experiment_quantize_all():
         "quant_all_benchmark",
         models,
         tasks,
-        quantize_only=True,
-        save_dir = "snapshots"
     )
 
 def experiment_gptq():
@@ -377,13 +399,14 @@ def get_memory_metrics():
     return torch.cuda.memory_allocated(), torch.cuda.memory_reserved()
 
 def main():
+    experiment_eval_all()
     # experiment_quantize_all()
     # experiment_debug()
     # experiment_awq()
     # experiment_gptq()
     # experiment_hqq()
     # experiment_debug()
-    experiment_fp16_baseline()
+    # experiment_fp16_baseline()
 
 
 if __name__ == "__main__":
