@@ -1,3 +1,4 @@
+import copy
 import gc
 import glob
 import logging
@@ -37,7 +38,7 @@ HHQ_CONFIGS = [
    ("b3g128",   HQQQuantConfig(nbits=3, group_size=128)),
    ("mix-3_62", HQQQuantConfig(mixed=True, budget=3.62, quant_scale=True)),
    ("mix-3_42", HQQQuantConfig(mixed=True, budget=3.42, quant_scale=True)),
-   ("mix-3_15", HQQQuantConfig(mixed=True, budget=3.15, quant_scale=True)),
+   ("mix-3_14", HQQQuantConfig(mixed=True, budget=3.14, quant_scale=True)),
    ("mix-2_75", HQQQuantConfig(mixed=True, budget=2.75, quant_scale=True)),
 ]
 
@@ -104,7 +105,7 @@ def experiment_eval_mix():
         'HQQ': {
             "create_fn": create_hqq_model,
             "quantize_fn": quantize_hqq_model,
-            "configs": HHQ_CONFIGS[-3:],
+            "configs": HHQ_CONFIGS[-2:],
         },
     }
     do_expermient(
@@ -192,11 +193,27 @@ def experiment_hqq():
         'HQQ': {
            "create_fn": create_hqq_model,
            "quantize_fn": quantize_hqq_model,
-            "configs": HHQ_CONFIGS[4:],
+            "configs": HHQ_CONFIGS,
         },
     }
     do_expermient(
         "hqq_benchmark",
+        models,
+        tasks,
+        save_dir = "snapshots"
+    )
+
+def experiment_hqq_mix():
+    models = ALL_MODELS
+    tasks = {
+        'HQQ': {
+           "create_fn": create_hqq_model,
+           "quantize_fn": quantize_hqq_model,
+            "configs": HHQ_CONFIGS[-2:],
+        },
+    }
+    do_expermient(
+        "hqq_benchmark_mix",
         models,
         tasks,
         save_dir = "snapshots"
@@ -280,7 +297,14 @@ def do_expermient(
                     metric['fp_mem_allot'], metric['fp_mem_reserved'] = get_memory_metrics()
                     if config[0].startswith('mix-') and model_id in QUANT_METRICS_FILE_MAP:
                         config[1]['quant_metrics_file'] = QUANT_METRICS_FILE_MAP[model_id]
-                    model, duration = quant_fn(model, tokenizer, config[1], model_id, config[0], save_dir)
+                    model, duration = quant_fn(
+                        model,
+                        tokenizer,
+                        copy.deepcopy(config[1]), # avoid interventions between models
+                        model_id,
+                        config[0],
+                        save_dir
+                    )
                     metric['quant_mem_allot'], metric['quant_mem_reserved'] = get_memory_metrics()
                     metric['quant_duration'] = duration
                 #Evaluate the quantized model
@@ -450,7 +474,8 @@ def main():
     # experiment_debug()
     # experiment_fp16_baseline()
     # experiment_quantize_mix()
-    experiment_eval_mix()
+    # experiment_hqq()
+    experiment_hqq_mix()
 
 
 if __name__ == "__main__":
