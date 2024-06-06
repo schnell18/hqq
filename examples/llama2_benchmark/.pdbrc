@@ -2,5 +2,6 @@
 # c
 # b eval_model.py:34
 # b bench.py:221
-b hqq/models/base.py:132
-b quant_llama2_hqq_demo.py:30
+# b hqq/models/base.py:132
+# b quant_llama2_hqq_demo.py:30
+b hqq/models/base.py:265

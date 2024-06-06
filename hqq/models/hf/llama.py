@@ -7,7 +7,6 @@ from .base import BaseHQQHFModel
 from ...core.quantize import BaseQuantizeConfig
 from tqdm import tqdm
 
-
 # Patch LLama functions
 class LLamaPatch(BasePatch):
     # These tags are used to specify the parameters of each layer type. For example, if you want to give different quantization parameters to different layers
@@ -45,10 +44,13 @@ class LLamaPatch(BasePatch):
         layers = base_model.layers
         self_attns = ['q_proj', 'v_proj', 'k_proj', 'o_proj']
         mlps = ['gate_proj', 'up_proj', 'down_proj']
+
+
         for i in tqdm(range(len(layers)), disable=not verbose):
             self_attn_obj = layers[i].self_attn
             for item in self_attns:
-                quant_config = cls.get_optimal_config(i, patch_params, f"self_attn.{item}")
+                module = f"self_attn.{item}"
+                quant_config = cls.get_optimal_config(model, i, module, patch_params)
                 setattr(
                     self_attn_obj,
                     item,
@@ -56,7 +58,8 @@ class LLamaPatch(BasePatch):
                 )
             mlp_obj = layers[i].mlp
             for item in mlps:
-                quant_config = cls.get_optimal_config(i, patch_params, f"mlp.{item}")
+                module = f"mlp.{item}"
+                quant_config = cls.get_optimal_config(model, i, module, patch_params)
                 setattr(
                     mlp_obj,
                     item,
@@ -64,28 +67,17 @@ class LLamaPatch(BasePatch):
                 )
 
     @classmethod
-    def get_optimal_config(cls, layer_no: int, global_quant_config: dict, item: str) -> dict:
-        config = global_quant_config[item]
+    def get_optimal_config(cls, model, layer_no: int, module: str, global_quant_config: dict) -> dict:
+        config = global_quant_config[module]
         if config is None:
-            quant_config = BaseQuantizeConfig()
-        else:
-            quant_config = copy.deepcopy(config)
-
-        auto_tune = quant_config.pop("auto_tune")
-        if auto_tune:
-            match item:
-                case "self_attn.q_proj":
-                    quant_config['weight_quant_params']['nbits'] = 3
-                    quant_config['weight_quant_params']['group_size'] = 32
-                case "self_attn.k_proj":
-                    if layer_no > 1:
-                        quant_config['weight_quant_params']['nbits'] = 3
-                        quant_config['weight_quant_params']['group_size'] = 32
-                case "self_attn.v_proj":
-                    if layer_no < 30:
-                        quant_config['weight_quant_params']['nbits'] = 3
-                        quant_config['weight_quant_params']['group_size'] = 32
-
+            return None
+        quant_config = copy.deepcopy(config)
+        if 'mixed' in quant_config and quant_config['mixed']:
+            quant_config.pop('mixed')
+            opt_tpl = model.optimal_configs[f'{layer_no}.{module}']
+            if opt_tpl:
+                quant_config['weight_quant_params']['nbits'] = opt_tpl[0]
+                quant_config['weight_quant_params']['group_size'] = opt_tpl[1]
         return quant_config
 
 

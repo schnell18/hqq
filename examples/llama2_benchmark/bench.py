@@ -19,17 +19,26 @@ from tqdm import tqdm
 from transformers import AutoModelForCausalLM
 
 ALL_MODELS = [
-    "meta-llama/Meta-Llama-3-8B",
     "meta-llama/Llama-2-7b-hf",
     "meta-llama/Llama-2-13b-hf",
+    "meta-llama/Meta-Llama-3-8B",
 ]
 
+QUANT_METRICS_FILE_MAP = {
+    "meta-llama/Llama-2-7b-hf": "data/fnorm-Llama-2-7b-hf.csv",
+    "meta-llama/Llama-2-13b-hf": "data/fnorm-Llama-2-13b-hf.csv",
+    "meta-llama/Meta-Llama-3-8B": "data/fnorm-Llama-3-8B.csv",
+}
+
 HHQ_CONFIGS = [
-   ("b4g64",  HQQQuantConfig(nbits=4, group_size=64)),
-   ("b4g128", HQQQuantConfig(nbits=4, group_size=128)),
-   ("b3g64",  HQQQuantConfig(nbits=3, group_size=64)),
-   ("b3g128", HQQQuantConfig(nbits=3, group_size=128)),
-   ("auto",   HQQQuantConfig(auto_tune=True)),
+   ("b4g64",    HQQQuantConfig(nbits=4, group_size=64)),
+   ("b4g128",   HQQQuantConfig(nbits=4, group_size=128)),
+   ("b3g64",    HQQQuantConfig(nbits=3, group_size=64)),
+   ("b3g128",   HQQQuantConfig(nbits=3, group_size=128)),
+   ("mix-3_62", HQQQuantConfig(mixed=True, budget=3.62, quant_scale=True)),
+   ("mix-3_42", HQQQuantConfig(mixed=True, budget=3.42, quant_scale=True)),
+   ("mix-3_15", HQQQuantConfig(mixed=True, budget=3.15, quant_scale=True)),
+   ("mix-2_75", HQQQuantConfig(mixed=True, budget=2.75, quant_scale=True)),
 ]
 
 AWQ_CONFIGS = [
@@ -87,6 +96,37 @@ def experiment_eval_all():
         "eval_all_benchmark",
         models,
         tasks,
+    )
+
+def experiment_eval_mix():
+    models = ALL_MODELS[:1]
+    tasks = {
+        'HQQ': {
+            "create_fn": create_hqq_model,
+            "quantize_fn": quantize_hqq_model,
+            "configs": HHQ_CONFIGS[-3:],
+        },
+    }
+    do_expermient(
+        "eval_mix",
+        models,
+        tasks
+    )
+
+def experiment_quantize_mix():
+    models = ALL_MODELS[:1]
+    tasks = {
+        'HQQ': {
+            "create_fn": create_hqq_model,
+            "quantize_fn": quantize_hqq_model,
+            "configs": HHQ_CONFIGS[-3:],
+        },
+    }
+    do_expermient(
+        "quantize_mix",
+        models,
+        tasks,
+        quantize_only = True,
     )
 
 def experiment_quantize_all():
@@ -152,7 +192,7 @@ def experiment_hqq():
         'HQQ': {
            "create_fn": create_hqq_model,
            "quantize_fn": quantize_hqq_model,
-           "configs": HHQ_CONFIGS,
+            "configs": HHQ_CONFIGS[4:],
         },
     }
     do_expermient(
@@ -238,6 +278,8 @@ def do_expermient(
 
                 if not quantized and quant_fn:
                     metric['fp_mem_allot'], metric['fp_mem_reserved'] = get_memory_metrics()
+                    if config[0].startswith('mix-') and model_id in QUANT_METRICS_FILE_MAP:
+                        config[1]['quant_metrics_file'] = QUANT_METRICS_FILE_MAP[model_id]
                     model, duration = quant_fn(model, tokenizer, config[1], model_id, config[0], save_dir)
                     metric['quant_mem_allot'], metric['quant_mem_reserved'] = get_memory_metrics()
                     metric['quant_duration'] = duration
@@ -399,7 +441,7 @@ def get_memory_metrics():
     return torch.cuda.memory_allocated(), torch.cuda.memory_reserved()
 
 def main():
-    experiment_eval_all()
+    # experiment_eval_all()
     # experiment_quantize_all()
     # experiment_debug()
     # experiment_awq()
@@ -407,6 +449,8 @@ def main():
     # experiment_hqq()
     # experiment_debug()
     # experiment_fp16_baseline()
+    # experiment_quantize_mix()
+    experiment_eval_mix()
 
 
 if __name__ == "__main__":
