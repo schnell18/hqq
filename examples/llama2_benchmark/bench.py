@@ -32,14 +32,16 @@ QUANT_METRICS_FILE_MAP = {
 }
 
 HHQ_CONFIGS = [
+   ("b4g32",    HQQQuantConfig(nbits=4, group_size=32)),
    ("b4g64",    HQQQuantConfig(nbits=4, group_size=64)),
    ("b4g128",   HQQQuantConfig(nbits=4, group_size=128)),
+   ("b3g32",    HQQQuantConfig(nbits=3, group_size=32)),
    ("b3g64",    HQQQuantConfig(nbits=3, group_size=64)),
    ("b3g128",   HQQQuantConfig(nbits=3, group_size=128)),
-   ("mix-3_62", HQQQuantConfig(mixed=True, budget=3.62, quant_scale=True)),
-   ("mix-3_42", HQQQuantConfig(mixed=True, budget=3.42, quant_scale=True)),
-   ("mix-3_14", HQQQuantConfig(mixed=True, budget=3.14, quant_scale=True)),
-   ("mix-2_75", HQQQuantConfig(mixed=True, budget=2.75, quant_scale=True)),
+   ("mix-3_74", HQQQuantConfig(mixed=True, budget=3.74, quant_scale=True)),
+   ("mix-3_52", HQQQuantConfig(mixed=True, budget=3.52, quant_scale=True)),
+   ("mix-2_74", HQQQuantConfig(mixed=True, budget=2.74, quant_scale=True)),
+   ("mix-2_50", HQQQuantConfig(mixed=True, budget=2.50, quant_scale=True)),
 ]
 
 AWQ_CONFIGS = [
@@ -209,7 +211,7 @@ def experiment_hqq_mix():
         'HQQ': {
            "create_fn": create_hqq_model,
            "quantize_fn": quantize_hqq_model,
-            "configs": HHQ_CONFIGS[-2:],
+            "configs": HHQ_CONFIGS,
         },
     }
     do_expermient(
