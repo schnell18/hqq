@@ -257,11 +257,14 @@ class BaseHQQModel:
         # Set linear tags automatically
         cls.setup_model(model)
 
-        if 'mixed' in quant_config and quant_config['mixed']:
+        if 'budget' in quant_config:
             budget = quant_config.pop('budget')
-            metrics_file = quant_config.pop('quant_metrics_file')
-            optimal_configs = find_optimal_configs(metrics_file, budget, time_limit=12, verbose=True)
-            model.optimal_configs = optimal_configs
+        if 'mixed' in quant_config:
+            mixed = quant_config.pop('mixed')
+            if mixed:
+                metrics_file = quant_config.pop('quant_metrics_file')
+                optimal_configs = find_optimal_configs(metrics_file, budget, time_limit=12, verbose=True)
+                model.optimal_configs = optimal_configs
 
         # Use the same quantization config for all linear layers. Use None to skip quantizing a specfic layer.
         if True in [(key in model.linear_tags) for key in quant_config.keys()]:
