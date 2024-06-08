@@ -51,7 +51,7 @@ def calc_fnorm(
                         'nbit2': nbit2,
                         'gsize2': gsize2,
                         'fnorm': norm_hqq,
-                        'memmb': (nbit1+nbit2/(gsize1*gsize2))*params/8/(1024**2),
+                        'memmb': (nbit1+2*nbit2/(gsize1*gsize2))*params/8/(1024**2),
                         'params': params,
                     }
                     dikts.append(dikt)
@@ -80,7 +80,7 @@ def calc_fnorm_for_model(model_id, base_dir, layers):
             dikts.extend(ds)
 
     df = pd.DataFrame(dikts)
-    file_name = f"fnorm-{model_id.split('/')[1]}.csv"
+    file_name = f"data/fnorm-{model_id.split('/')[1]}.csv"
     df.to_csv(
         file_name,
         columns=[

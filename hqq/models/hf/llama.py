@@ -72,8 +72,7 @@ class LLamaPatch(BasePatch):
         if config is None:
             return None
         quant_config = copy.deepcopy(config)
-        if 'mixed' in quant_config and quant_config['mixed']:
-            quant_config.pop('mixed')
+        if hasattr(model, 'optimal_configs'):
             opt_tpl = model.optimal_configs[f'{layer_no}.{module}']
             if opt_tpl:
                 quant_config['weight_quant_params']['nbits'] = opt_tpl[0]

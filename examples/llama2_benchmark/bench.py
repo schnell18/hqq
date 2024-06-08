@@ -38,10 +38,10 @@ HHQ_CONFIGS = [
    ("b3g32",    HQQQuantConfig(nbits=3, group_size=32)),
    ("b3g64",    HQQQuantConfig(nbits=3, group_size=64)),
    ("b3g128",   HQQQuantConfig(nbits=3, group_size=128)),
-   ("mix-3_74", HQQQuantConfig(mixed=True, budget=3.74, quant_scale=True)),
-   ("mix-3_52", HQQQuantConfig(mixed=True, budget=3.52, quant_scale=True)),
-   ("mix-2_74", HQQQuantConfig(mixed=True, budget=2.74, quant_scale=True)),
-   ("mix-2_50", HQQQuantConfig(mixed=True, budget=2.50, quant_scale=True)),
+   ("mix-3_76", HQQQuantConfig(mixed=True, budget=3.76, quant_scale=True)),
+   ("mix-3_50", HQQQuantConfig(mixed=True, budget=3.50, quant_scale=True)),
+   ("mix-2_75", HQQQuantConfig(mixed=True, budget=2.75, quant_scale=True)),
+   ("mix-2_48", HQQQuantConfig(mixed=True, budget=2.48, quant_scale=True)),
 ]
 
 AWQ_CONFIGS = [
@@ -102,31 +102,31 @@ def experiment_eval_all():
     )
 
 def experiment_eval_mix():
-    models = ALL_MODELS[:1]
+    models = ALL_MODELS
     tasks = {
         'HQQ': {
             "create_fn": create_hqq_model,
             "quantize_fn": quantize_hqq_model,
-            "configs": HHQ_CONFIGS[-2:],
+            "configs": HHQ_CONFIGS[-4:],
         },
     }
     do_expermient(
-        "eval_mix",
+        "eval_hqq_mix2",
         models,
         tasks
     )
 
 def experiment_quantize_mix():
-    models = ALL_MODELS[:1]
+    models = ALL_MODELS
     tasks = {
         'HQQ': {
             "create_fn": create_hqq_model,
             "quantize_fn": quantize_hqq_model,
-            "configs": HHQ_CONFIGS[-3:],
+            "configs": HHQ_CONFIGS[-4:],
         },
     }
     do_expermient(
-        "quantize_mix",
+        "quantize_mix4",
         models,
         tasks,
         quantize_only = True,
@@ -211,11 +211,11 @@ def experiment_hqq_mix():
         'HQQ': {
            "create_fn": create_hqq_model,
            "quantize_fn": quantize_hqq_model,
-            "configs": HHQ_CONFIGS,
+            "configs": HHQ_CONFIGS[4:],
         },
     }
     do_expermient(
-        "hqq_benchmark_mix",
+        "hqq_benchmark_mix2",
         models,
         tasks,
         save_dir = "snapshots"
@@ -297,16 +297,19 @@ def do_expermient(
 
                 if not quantized and quant_fn:
                     metric['fp_mem_allot'], metric['fp_mem_reserved'] = get_memory_metrics()
+                    quant_config = copy.deepcopy(config[1]) # avoid interventions between models
                     if config[0].startswith('mix-') and model_id in QUANT_METRICS_FILE_MAP:
-                        config[1]['quant_metrics_file'] = QUANT_METRICS_FILE_MAP[model_id]
+                        quant_config['quant_metrics_file'] = QUANT_METRICS_FILE_MAP[model_id]
                     model, duration = quant_fn(
                         model,
                         tokenizer,
-                        copy.deepcopy(config[1]), # avoid interventions between models
+                        quant_config,
                         model_id,
                         config[0],
                         save_dir
                     )
+                    # persistent the quantized model
+                    os.sync()
                     metric['quant_mem_allot'], metric['quant_mem_reserved'] = get_memory_metrics()
                     metric['quant_duration'] = duration
                 #Evaluate the quantized model
@@ -476,8 +479,7 @@ def main():
     # experiment_debug()
     # experiment_fp16_baseline()
     # experiment_quantize_mix()
-    # experiment_hqq()
-    experiment_hqq_mix()
+    experiment_eval_mix()
 
 
 if __name__ == "__main__":
