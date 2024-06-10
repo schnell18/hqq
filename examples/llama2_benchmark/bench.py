@@ -45,6 +45,7 @@ HHQ_CONFIGS = [
 ]
 
 AWQ_CONFIGS = [
+    ("b4g32", {"w_bit": 4, "q_group_size": 32, "zero_point": True, 'version':'GEMM'}),
     ("b4g64", {"w_bit": 4, "q_group_size": 64, "zero_point": True, 'version':'GEMM'}),
     ("b4g128", {"w_bit": 4, "q_group_size": 128, "zero_point": True, 'version':'GEMM'}),
     # 3-bit not supported by AutoAWQ right now
@@ -53,9 +54,12 @@ AWQ_CONFIGS = [
 ]
 
 GPTQ_CONFIGS = [
+    ("b4g32",  GPTQQuantConfig(bits=4, group_size=32, damp_percent=0.01, desc_act=False)),
     ("b4g64",  GPTQQuantConfig(bits=4, group_size=64, damp_percent=0.01, desc_act=False)),
-    ("b4g128", GPTQQuantConfig(bits=4, group_size=64, damp_percent=0.01, desc_act=False)),
+    ("b4g128", GPTQQuantConfig(bits=4, group_size=128, damp_percent=0.01, desc_act=False)),
+    ("b3g32",  GPTQQuantConfig(bits=3, group_size=32, damp_percent=0.01, desc_act=False)),
     ("b3g64",  GPTQQuantConfig(bits=3, group_size=64, damp_percent=0.01, desc_act=False)),
+    ("b3g128", GPTQQuantConfig(bits=3, group_size=128, damp_percent=0.01, desc_act=False)),
 ]
 
 def experiment_debug():
@@ -74,6 +78,61 @@ def experiment_debug():
         models,
         tasks,
         save_dir = "snapshots-hqq"
+    )
+
+def experiment_eval_gptq_g32():
+    models = ALL_MODELS[2:]
+    tasks = {
+        'gptq': {
+            "create_fn": create_gptq_model,
+            "quantize_fn": quantize_gptq_model,
+            "configs": [GPTQ_CONFIGS[0], GPTQ_CONFIGS[3]],
+        },
+    }
+    do_expermient(
+        "eval_gptq_g32",
+        models,
+        tasks,
+    )
+
+def experiment_eval_awq_g32():
+    models = ALL_MODELS[2:]
+    tasks = {
+        'AWQ': {
+            "create_fn": create_awq_model,
+            "quantize_fn": quantize_awq_model,
+            "configs": AWQ_CONFIGS[0:1],
+        },
+    }
+    do_expermient(
+        "eval_awq_g32",
+        models,
+        tasks,
+    )
+
+def experiment_eval_g32():
+    models = ALL_MODELS
+    tasks = {
+        'HQQ': {
+           "create_fn": create_hqq_model,
+           "quantize_fn": quantize_hqq_model,
+           "configs": [HHQ_CONFIGS[0], HHQ_CONFIGS[3]],
+        },
+        'AWQ': {
+            "create_fn": create_awq_model,
+            "quantize_fn": quantize_awq_model,
+            "configs": AWQ_CONFIGS[0:1],
+        },
+        'GPTQ': {
+            "create_fn": create_gptq_model,
+            "quantize_fn": quantize_gptq_model,
+            "configs": [GPTQ_CONFIGS[0], GPTQ_CONFIGS[3]],
+        },
+    }
+    do_expermient(
+        "eval_all_g32",
+        models,
+        tasks,
     )
 
 def experiment_eval_all():
@@ -111,7 +170,7 @@ def experiment_eval_mix():
         },
     }
     do_expermient(
-        "eval_hqq_mix2",
+        "eval_hqq_mix3",
         models,
         tasks
     )
@@ -122,7 +181,7 @@ def experiment_quantize_mix():
         'HQQ': {
             "create_fn": create_hqq_model,
             "quantize_fn": quantize_hqq_model,
-            "configs": HHQ_CONFIGS[-4:],
+            "configs": HHQ_CONFIGS,
         },
     }
     do_expermient(
@@ -252,10 +311,13 @@ def do_expermient(
         datefmt="%Y-%m-%d %H:%M:%S"
     )
 
+    exp_result_name = experiment_name
     metrics = []
     for kind, spec in tasks.items():
+        exp_result_name += '-' + kind
         configs = spec["configs"]
         for config in configs:
+            exp_result_name += '_' + config[0]
             for model_id in models:
                 metric = {
                     'model': model_id.split('/')[1],
@@ -319,7 +381,7 @@ def do_expermient(
                 cleanup(model)
 
     # combine metrics
-    combine_metrics(experiment_name)
+    combine_metrics(experiment_name, exp_result_name)
 
 def save_partial_metric(experiment_name, kind, model_id, config, metric):
     metrics = [metric]
@@ -332,7 +394,7 @@ def save_partial_metric(experiment_name, kind, model_id, config, metric):
         file_name,
         columns=[
             "method", "model", "config", "quant_duration",
-            "ppl_wikitext", "ppl_ptb", "ppl_c4",
+            "ppl_wikitext", "ppl_c4", "ppl_ptb",
             "duration_wikitext", "duration_ptb", "duration_c4",
             "quant_mem_allot", "quant_mem_reserved",
             "fp_mem_allot", "fp_mem_reserved",
@@ -341,7 +403,7 @@ def save_partial_metric(experiment_name, kind, model_id, config, metric):
         index=False
     )
 
-def combine_metrics(experiment_name):
+def combine_metrics(experiment_name, exp_result_name):
     dfs = []
     iters = glob.iglob(f"./results/{experiment_name}/partial-*.csv")
     for it in iters:
@@ -349,7 +411,7 @@ def combine_metrics(experiment_name):
         dfs.append(df)
     combined = pd.concat(dfs)
     ts_str = datetime.now().strftime("%Y%m%d%H%M%S")
-    file_name = f"results/result-{experiment_name}-{ts_str}.xlsx"
+    file_name = f"results/result-{exp_result_name}-{ts_str}.xlsx"
     combined.to_excel(file_name, index=False)
 
 def eval_ppls(model, tokenizer, metric):
@@ -479,8 +541,10 @@ def main():
     # experiment_debug()
     # experiment_fp16_baseline()
     # experiment_quantize_mix()
-    experiment_eval_mix()
-
+    # experiment_eval_mix()
+    # experiment_eval_g32()
+    # experiment_eval_awq_g32()
+    experiment_eval_gptq_g32()
 
 if __name__ == "__main__":
     # os.environ['HF_DATASETS_OFFLINE'] = '1'
