@@ -7,16 +7,11 @@ from hqq.core.quantize import Quantizer as hQuant
 from safetensors import safe_open
 from timeit import default_timer as timer
 
-# quantization employed in QLoRA
-def quant_nf4(w, bit):
-    device = "cuda"
-    w = w.to(device)
-    qw = Params4bit(w, blocksize=64, quant_type='nf4').to(device)
-    return dequantize_nf4(qw.data, qw.quant_state).to("cpu")
 
 def quant_hqq(tensor, nbits, group_size=64, optimize=True):
     wq, meta = hQuant.quantize(tensor, nbits=nbits, group_size=group_size, optimize=optimize)
     return hQuant.dequantize(wq, meta)
+
 
 def get_tensor(matrix_name, base_dir, index_json='model.safetensors.index.json'):
     fp = os.path.join(base_dir, index_json)
@@ -27,8 +22,9 @@ def get_tensor(matrix_name, base_dir, index_json='model.safetensors.index.json')
             mp = os.path.join(base_dir, st_file)
             with safe_open(mp, framework="pt", device="cpu") as f:
                 return f.get_tensor(matrix_name)
-        except Exception as e:
+        except Exception:
             raise ValueError(f"Invalid key {matrix_name}")
+
 
 def calc_fnorm(
         base_dir, prefix, layer, module, suffix,
@@ -51,16 +47,17 @@ def calc_fnorm(
                         'nbit2': nbit2,
                         'gsize2': gsize2,
                         'fnorm': norm_hqq,
-                        'memmb': (nbit1+2*nbit2/(gsize1*gsize2))*params/8/(1024**2),
+                        'memmb': (nbit1 + 2 * nbit2 / (gsize1 * gsize2)) * params / 8 / (1024**2),
                         'params': params,
                     }
                     dikts.append(dikt)
     return dikts
 
+
 def calc_fnorm_for_model(model_id, base_dir, layers):
     self_attns = ['q_proj', 'v_proj', 'k_proj', 'o_proj']
     mlps = ['gate_proj', 'up_proj', 'down_proj']
-    nbits1 = [2, 3, 4]
+    nbits1 = [2, 3, 4, 8]
     gsizes1 = [32, 64, 128]
     nbits2 = [8]
     gsizes2 = [128]
@@ -91,6 +88,7 @@ def calc_fnorm_for_model(model_id, base_dir, layers):
         index=False
     )
 
+
 def gen_calc_tasks():
     home_dir = os.environ.get("HOME", "/home/justin")
     return [
@@ -120,6 +118,7 @@ def gen_calc_tasks():
             "base_dir": "/data/hugginface/hub/models--meta-llama--Meta-Llama-3-70B/snapshots/b4d08b7db49d488da3ac49adf25a6b9ac01ae338"
         },
     ]
+
 
 def main():
     calc_tasks = gen_calc_tasks()[:]

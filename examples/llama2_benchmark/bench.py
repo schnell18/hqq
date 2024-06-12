@@ -4,6 +4,8 @@ import glob
 import logging
 import os
 import pandas as pd
+import random
+import sys
 import time
 import torch
 import transformers
@@ -11,6 +13,7 @@ import transformers
 from auto_gptq import AutoGPTQForCausalLM
 from auto_gptq import BaseQuantizeConfig as GPTQQuantConfig
 from awq import AutoAWQForCausalLM
+from datasets import load_dataset
 from datetime import datetime
 from eval_model import eval_wikitext2, eval_c4, eval_ptb
 from hqq.core.quantize import BaseQuantizeConfig as HQQQuantConfig
@@ -32,35 +35,39 @@ QUANT_METRICS_FILE_MAP = {
 }
 
 HHQ_CONFIGS = [
-   ("b4g32",    HQQQuantConfig(nbits=4, group_size=32)),
-   ("b4g64",    HQQQuantConfig(nbits=4, group_size=64)),
-   ("b4g128",   HQQQuantConfig(nbits=4, group_size=128)),
-   ("b3g32",    HQQQuantConfig(nbits=3, group_size=32)),
-   ("b3g64",    HQQQuantConfig(nbits=3, group_size=64)),
-   ("b3g128",   HQQQuantConfig(nbits=3, group_size=128)),
-   ("mix-3_76", HQQQuantConfig(mixed=True, budget=3.76, quant_scale=True)),
-   ("mix-3_50", HQQQuantConfig(mixed=True, budget=3.50, quant_scale=True)),
-   ("mix-2_75", HQQQuantConfig(mixed=True, budget=2.75, quant_scale=True)),
-   ("mix-2_48", HQQQuantConfig(mixed=True, budget=2.48, quant_scale=True)),
+    ("b4g32", HQQQuantConfig(nbits=4, group_size=32)),
+    ("b4g64", HQQQuantConfig(nbits=4, group_size=64)),
+    ("b4g128", HQQQuantConfig(nbits=4, group_size=128)),
+    ("b3g32", HQQQuantConfig(nbits=3, group_size=32)),
+    ("b3g64", HQQQuantConfig(nbits=3, group_size=64)),
+    ("b3g128", HQQQuantConfig(nbits=3, group_size=128)),
+    ("mix-3_76", HQQQuantConfig(mixed=True, budget=3.76, quant_scale=True)),
+    ("mix-3_50", HQQQuantConfig(mixed=True, budget=3.50, quant_scale=True)),
+    ("mix-2_75", HQQQuantConfig(mixed=True, budget=2.75, quant_scale=True)),
+    ("mix-2_48", HQQQuantConfig(mixed=True, budget=2.48, quant_scale=True)),
+    ("mix-4_25", HQQQuantConfig(mixed=True, budget=4.25, quant_scale=True)),
+    ("mix-4_50", HQQQuantConfig(mixed=True, budget=4.50, quant_scale=True)),
+    ("mix-4_75", HQQQuantConfig(mixed=True, budget=4.75, quant_scale=True)),
 ]
 
 AWQ_CONFIGS = [
-    ("b4g32", {"w_bit": 4, "q_group_size": 32, "zero_point": True, 'version':'GEMM'}),
-    ("b4g64", {"w_bit": 4, "q_group_size": 64, "zero_point": True, 'version':'GEMM'}),
-    ("b4g128", {"w_bit": 4, "q_group_size": 128, "zero_point": True, 'version':'GEMM'}),
+    ("b4g32", {"w_bit": 4, "q_group_size": 32, "zero_point": True, 'version': 'GEMM'}),
+    ("b4g64", {"w_bit": 4, "q_group_size": 64, "zero_point": True, 'version': 'GEMM'}),
+    ("b4g128", {"w_bit": 4, "q_group_size": 128, "zero_point": True, 'version': 'GEMM'}),
     # 3-bit not supported by AutoAWQ right now
-    #("b3g64", {"w_bit": 3, "q_group_size": 64, "zero_point": True, 'version':'gemv_fast'}),
-    #("b3g128", {"w_bit": 3, "q_group_size": 128, "zero_point": True, 'version':'gemv_fast'}),
+    # ("b3g64", {"w_bit": 3, "q_group_size": 64, "zero_point": True, 'version':'gemv_fast'}),
+    # ("b3g128", {"w_bit": 3, "q_group_size": 128, "zero_point": True, 'version':'gemv_fast'}),
 ]
 
 GPTQ_CONFIGS = [
-    ("b4g32",  GPTQQuantConfig(bits=4, group_size=32, damp_percent=0.01, desc_act=False)),
-    ("b4g64",  GPTQQuantConfig(bits=4, group_size=64, damp_percent=0.01, desc_act=False)),
+    ("b4g32", GPTQQuantConfig(bits=4, group_size=32, damp_percent=0.01, desc_act=False)),
+    ("b4g64", GPTQQuantConfig(bits=4, group_size=64, damp_percent=0.01, desc_act=False)),
     ("b4g128", GPTQQuantConfig(bits=4, group_size=128, damp_percent=0.01, desc_act=False)),
-    ("b3g32",  GPTQQuantConfig(bits=3, group_size=32, damp_percent=0.01, desc_act=False)),
-    ("b3g64",  GPTQQuantConfig(bits=3, group_size=64, damp_percent=0.01, desc_act=False)),
+    ("b3g32", GPTQQuantConfig(bits=3, group_size=32, damp_percent=0.01, desc_act=False)),
+    ("b3g64", GPTQQuantConfig(bits=3, group_size=64, damp_percent=0.01, desc_act=False)),
     ("b3g128", GPTQQuantConfig(bits=3, group_size=128, damp_percent=0.01, desc_act=False)),
 ]
+
 
 def experiment_debug():
     models = [
@@ -77,23 +84,42 @@ def experiment_debug():
         "debug_hqq_auto",
         models,
         tasks,
-        save_dir = "snapshots-hqq"
+        save_dir="snapshots-hqq"
     )
 
-def experiment_eval_gptq_g32():
-    models = ALL_MODELS[2:]
+
+def experiment_quant_gptq():
+    models = ALL_MODELS
     tasks = {
         'gptq': {
             "create_fn": create_gptq_model,
             "quantize_fn": quantize_gptq_model,
-            "configs": [GPTQ_CONFIGS[0], GPTQ_CONFIGS[3]],
+            "configs": GPTQ_CONFIGS,
         },
     }
     do_expermient(
-        "eval_gptq_g32",
+        "quant_gptq",
+        models,
+        tasks,
+        quantize_only=True,
+    )
+
+
+def experiment_eval_gptq():
+    models = ALL_MODELS
+    tasks = {
+        'gptq': {
+            "create_fn": create_gptq_model,
+            "quantize_fn": quantize_gptq_model,
+            "configs": [GPTQ_CONFIGS[1]],
+        },
+    }
+    do_expermient(
+        "eval_gptq",
         models,
         tasks,
     )
+
 
 def experiment_eval_awq_g32():
     models = ALL_MODELS[2:]
@@ -110,13 +136,14 @@ def experiment_eval_awq_g32():
         tasks,
     )
 
+
 def experiment_eval_g32():
     models = ALL_MODELS
     tasks = {
         'HQQ': {
-           "create_fn": create_hqq_model,
-           "quantize_fn": quantize_hqq_model,
-           "configs": [HHQ_CONFIGS[0], HHQ_CONFIGS[3]],
+            "create_fn": create_hqq_model,
+            "quantize_fn": quantize_hqq_model,
+            "configs": [HHQ_CONFIGS[0], HHQ_CONFIGS[3]],
         },
         'AWQ': {
             "create_fn": create_awq_model,
@@ -135,13 +162,14 @@ def experiment_eval_g32():
         tasks,
     )
 
+
 def experiment_eval_all():
     models = ALL_MODELS
     tasks = {
         'HQQ': {
-           "create_fn": create_hqq_model,
-           "quantize_fn": quantize_hqq_model,
-           "configs": HHQ_CONFIGS,
+            "create_fn": create_hqq_model,
+            "quantize_fn": quantize_hqq_model,
+            "configs": HHQ_CONFIGS,
         },
         'AWQ': {
             "create_fn": create_awq_model,
@@ -160,6 +188,7 @@ def experiment_eval_all():
         tasks,
     )
 
+
 def experiment_eval_mix():
     models = ALL_MODELS
     tasks = {
@@ -175,6 +204,40 @@ def experiment_eval_mix():
         tasks
     )
 
+
+def experiment_quant_mxq_boost():
+    models = ALL_MODELS
+    tasks = {
+        'HQQ': {
+            "create_fn": create_hqq_model,
+            "quantize_fn": quantize_hqq_model,
+            "configs": HHQ_CONFIGS[-3:],
+        },
+    }
+    do_expermient(
+        "quant_mxq_boost",
+        models,
+        tasks,
+        quantize_only=True,
+    )
+
+
+def experiment_eval_mxq_boost():
+    models = ALL_MODELS
+    tasks = {
+        'HQQ': {
+            "create_fn": create_hqq_model,
+            "quantize_fn": quantize_hqq_model,
+            "configs": HHQ_CONFIGS[-3:],
+        },
+    }
+    do_expermient(
+        "eval_mxq_boost",
+        models,
+        tasks,
+    )
+
+
 def experiment_quantize_mix():
     models = ALL_MODELS
     tasks = {
@@ -188,16 +251,17 @@ def experiment_quantize_mix():
         "quantize_mix4",
         models,
         tasks,
-        quantize_only = True,
+        quantize_only=True,
     )
+
 
 def experiment_quantize_all():
     models = ALL_MODELS
     tasks = {
         'HQQ': {
-           "create_fn": create_hqq_model,
-           "quantize_fn": quantize_hqq_model,
-           "configs": HHQ_CONFIGS,
+            "create_fn": create_hqq_model,
+            "quantize_fn": quantize_hqq_model,
+            "configs": HHQ_CONFIGS,
         },
         'AWQ': {
             "create_fn": create_awq_model,
@@ -216,6 +280,7 @@ def experiment_quantize_all():
         tasks,
     )
 
+
 def experiment_gptq():
     models = ALL_MODELS
     tasks = {
@@ -229,8 +294,9 @@ def experiment_gptq():
         "gptq_benchmark",
         models,
         tasks,
-        save_dir = "snapshots"
+        save_dir="snapshots"
     )
+
 
 def experiment_awq():
     models = ALL_MODELS
@@ -245,15 +311,16 @@ def experiment_awq():
         "awq_benchmark",
         models,
         tasks,
-        save_dir = "snapshots"
+        save_dir="snapshots"
     )
+
 
 def experiment_hqq():
     models = ALL_MODELS
     tasks = {
         'HQQ': {
-           "create_fn": create_hqq_model,
-           "quantize_fn": quantize_hqq_model,
+            "create_fn": create_hqq_model,
+            "quantize_fn": quantize_hqq_model,
             "configs": HHQ_CONFIGS,
         },
     }
@@ -261,15 +328,16 @@ def experiment_hqq():
         "hqq_benchmark",
         models,
         tasks,
-        save_dir = "snapshots"
+        save_dir="snapshots"
     )
+
 
 def experiment_hqq_mix():
     models = ALL_MODELS
     tasks = {
         'HQQ': {
-           "create_fn": create_hqq_model,
-           "quantize_fn": quantize_hqq_model,
+            "create_fn": create_hqq_model,
+            "quantize_fn": quantize_hqq_model,
             "configs": HHQ_CONFIGS[4:],
         },
     }
@@ -277,18 +345,17 @@ def experiment_hqq_mix():
         "hqq_benchmark_mix2",
         models,
         tasks,
-        save_dir = "snapshots"
+        save_dir="snapshots"
     )
+
 
 def experiment_fp16_baseline():
     models = ALL_MODELS
     tasks = {
         'FP16': {
-           "create_fn": create_fp16_model,
-           "quantize_fn": None,
-           "configs": [
-               ("base", {}),
-           ]
+            "create_fn": create_fp16_model,
+            "quantize_fn": None,
+            "configs": [("base", {}), ]
         },
     }
     do_expermient(
@@ -297,13 +364,14 @@ def experiment_fp16_baseline():
         tasks,
     )
 
+
 def do_expermient(
         experiment_name,
         models,
         tasks,
-        quantize_only = False,
-        save_dir = "snapshots"
-    ):
+        quantize_only=False,
+        save_dir="snapshots"
+):
 
     logging.basicConfig(
         format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
@@ -312,7 +380,6 @@ def do_expermient(
     )
 
     exp_result_name = experiment_name
-    metrics = []
     for kind, spec in tasks.items():
         exp_result_name += '-' + kind
         configs = spec["configs"]
@@ -359,7 +426,8 @@ def do_expermient(
 
                 if not quantized and quant_fn:
                     metric['fp_mem_allot'], metric['fp_mem_reserved'] = get_memory_metrics()
-                    quant_config = copy.deepcopy(config[1]) # avoid interventions between models
+                    # avoid interventions between models
+                    quant_config = copy.deepcopy(config[1])
                     if config[0].startswith('mix-') and model_id in QUANT_METRICS_FILE_MAP:
                         quant_config['quant_metrics_file'] = QUANT_METRICS_FILE_MAP[model_id]
                     model, duration = quant_fn(
@@ -374,7 +442,7 @@ def do_expermient(
                     os.sync()
                     metric['quant_mem_allot'], metric['quant_mem_reserved'] = get_memory_metrics()
                     metric['quant_duration'] = duration
-                #Evaluate the quantized model
+                # Evaluate the quantized model
                 if not quantize_only:
                     metric = eval_ppls(model, tokenizer, metric)
                 save_partial_metric(experiment_name, kind, model_id, config[0], metric)
@@ -382,6 +450,7 @@ def do_expermient(
 
     # combine metrics
     combine_metrics(experiment_name, exp_result_name)
+
 
 def save_partial_metric(experiment_name, kind, model_id, config, metric):
     metrics = [metric]
@@ -403,6 +472,7 @@ def save_partial_metric(experiment_name, kind, model_id, config, metric):
         index=False
     )
 
+
 def combine_metrics(experiment_name, exp_result_name):
     dfs = []
     iters = glob.iglob(f"./results/{experiment_name}/partial-*.csv")
@@ -413,6 +483,7 @@ def combine_metrics(experiment_name, exp_result_name):
     ts_str = datetime.now().strftime("%Y%m%d%H%M%S")
     file_name = f"results/result-{exp_result_name}-{ts_str}.xlsx"
     combined.to_excel(file_name, index=False)
+
 
 def eval_ppls(model, tokenizer, metric):
     ppl_wikitext, duration_wikitext = eval_wikitext2(model, tokenizer, verbose=True)
@@ -426,10 +497,13 @@ def eval_ppls(model, tokenizer, metric):
     metric['duration_c4'] = duration_c4
     return metric
 
+
 def create_fp16_model(model_id, quant_config, config_id, load_quantized, save_dir):
-    model     = AutoModelForCausalLM.from_pretrained(model_id, device_map="auto", torch_dtype=torch.float16)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id, device_map="auto", torch_dtype=torch.float16)
     tokenizer = transformers.AutoTokenizer.from_pretrained(model_id)
     return model, tokenizer, False
+
 
 def create_awq_model(model_id, quant_config, config_id, load_quantized, save_dir):
     quantized = False
@@ -441,45 +515,54 @@ def create_awq_model(model_id, quant_config, config_id, load_quantized, save_dir
         model = model.cuda()
     else:
         tokenizer = transformers.AutoTokenizer.from_pretrained(model_id)
-        model     = AutoAWQForCausalLM.from_pretrained(model_id)
+        model = AutoAWQForCausalLM.from_pretrained(model_id)
     return model, tokenizer, quantized
+
 
 def quantize_awq_model(model, tokenizer, quant_config, model_id, config_id, save_dir):
     t1 = time.time()
     model.quantize(tokenizer, quant_config=quant_config)
     t2 = time.time()
-    print('Took ' + str(t2-t1) + ' seconds to quantize the model with AWQ')
+    print('Took ' + str(t2 - t1) + ' seconds to quantize the model with AWQ')
     quant_path = f"{save_dir}/{model_id}-{config_id}-awq"
     model.save_quantized(quant_path)
     tokenizer.save_pretrained(quant_path)
-    return model, t2-t1
+    return model, t2 - t1
 
-#Adapted from: https://towardsdatascience.com/4-bit-quantization-with-gptq-36b0f4f02c34
+
+# Adapted from: https://towardsdatascience.com/4-bit-quantization-with-gptq-36b0f4f02c34
 def prepare_model(model, tokenizer, n_samples=1024, max_tokens=512, use_triton=False):
-	# Load data and tokenize examples
-	from datasets import load_dataset
-	import random
-	data           = load_dataset("allenai/c4", data_files="en/c4-train.00001-of-01024.json.gz", split=f"train[:{n_samples}]")
-	tokenized_data = torch.cat([tokenizer(data[i]['text'], return_tensors='pt').input_ids for i in tqdm(range(len(data)))], axis=-1) #~536K tokens
+    # Load data and tokenize examples
+    data = load_dataset(
+        "allenai/c4",
+        data_files="en/c4-train.00001-of-01024.json.gz",
+        split=f"train[:{n_samples}]"
+    )
+    # ~536K tokens
+    tokenized_data = torch.cat(
+        [tokenizer(data[i]['text'], return_tensors='pt').input_ids
+            for i in tqdm(range(len(data)))], axis=-1)
 
-	# Format tokenized examples
-	random.seed(1)
-	examples_ids = []
-	for _ in range(n_samples):
-		i              = random.randint(0, tokenized_data.shape[1] - max_tokens - 1)
-		j              = i + max_tokens
-		input_ids      = tokenized_data[:, i:j]
-		attention_mask = torch.ones_like(input_ids)
-		examples_ids.append({'input_ids': input_ids, 'attention_mask': attention_mask})
+    # Format tokenized examples
+    random.seed(1)
+    examples_ids = []
+    for _ in range(n_samples):
+        i = random.randint(0, tokenized_data.shape[1] - max_tokens - 1)
+        j = i + max_tokens
+        input_ids = tokenized_data[:, i:j]
+        attention_mask = torch.ones_like(input_ids)
+        examples_ids.append({'input_ids': input_ids, 'attention_mask': attention_mask})
 
-	print('Using ' + str(len(examples_ids)) + ' samples for calibration.')
-	model.quantize(examples_ids, batch_size=1, use_triton=use_triton)
-	model = model.cuda();
-	with torch.no_grad(): x = model(input_ids.to('cuda'));
-	del examples_ids, x
-	torch.cuda.empty_cache()
-	gc.collect()
-	return model
+    print('Using ' + str(len(examples_ids)) + ' samples for calibration.')
+    model.quantize(examples_ids, batch_size=1, use_triton=use_triton)
+    model = model.cuda()
+    with torch.no_grad():
+        x = model(input_ids.to('cuda'))
+    del examples_ids, x
+    torch.cuda.empty_cache()
+    gc.collect()
+    return model
+
 
 def create_gptq_model(model_id, quant_config, config_id, load_quantized, save_dir):
     quantized = False
@@ -490,46 +573,52 @@ def create_gptq_model(model_id, quant_config, config_id, load_quantized, save_di
         quantized = True
     else:
         tokenizer = transformers.AutoTokenizer.from_pretrained(model_id)
-        model     = AutoGPTQForCausalLM.from_pretrained(model_id, quant_config)
+        model = AutoGPTQForCausalLM.from_pretrained(model_id, quant_config)
     return model, tokenizer, quantized
+
 
 def quantize_gptq_model(model, tokenizer, quant_config, model_id, config_id, save_dir):
     t1 = time.time()
     model = prepare_model(model, tokenizer)
     t2 = time.time()
-    print('Took ' + str(t2-t1) + ' seconds to quantize the model with GPTQ')
+    print('Took ' + str(t2 - t1) + ' seconds to quantize the model with GPTQ')
     quant_path = f"{save_dir}/{model_id}-{config_id}-gptq"
     model.save_quantized(quant_path, use_safetensors=True)
-    return model, t2-t1
+    return model, t2 - t1
+
 
 def create_hqq_model(model_id, quant_config, config_id, load_quantized, save_dir):
     quantized = False
     quant_path = f"{save_dir}/{model_id}-{config_id}-hqq"
     if load_quantized and os.path.exists(quant_path):
-        model     = HQQModelForCausalLM.from_quantized(quant_path)
+        model = HQQModelForCausalLM.from_quantized(quant_path)
         tokenizer = hggAutoTokenizer.from_pretrained(model_id)
         quantized = True
     else:
-        model     = HQQModelForCausalLM.from_pretrained(model_id)
+        model = HQQModelForCausalLM.from_pretrained(model_id)
         tokenizer = hggAutoTokenizer.from_pretrained(model_id)
     return model, tokenizer, quantized
+
 
 def quantize_hqq_model(model, tokenizer, quant_config, model_id, config_id, save_dir):
     t1 = time.time()
     model.quantize_model(quant_config=quant_config)
     t2 = time.time()
-    print('Took ' + str(t2-t1) + ' seconds to quantize the model with HQQ')
+    print('Took ' + str(t2 - t1) + ' seconds to quantize the model with HQQ')
     quant_path = f"{save_dir}/{model_id}-{config_id}-hqq"
     model.save_quantized(quant_path)
-    return model, t2-t1
+    return model, t2 - t1
+
 
 def cleanup(model):
     del model
     torch.cuda.empty_cache()
     gc.collect()
 
+
 def get_memory_metrics():
     return torch.cuda.memory_allocated(), torch.cuda.memory_reserved()
+
 
 def main():
     # experiment_eval_all()
@@ -544,7 +633,19 @@ def main():
     # experiment_eval_mix()
     # experiment_eval_g32()
     # experiment_eval_awq_g32()
-    experiment_eval_gptq_g32()
+    experiment_eval_gptq()
+    # experiment_quant_gptq()
+
+
+def main1():
+    # os.environ['HF_DATASETS_OFFLINE'] = '1'
+    args = sys.argv[1:]
+    if len(args) > 0:
+        if args[0] == 'quant':
+            experiment_quant_mxq_boost()
+        else:
+            experiment_eval_mxq_boost()
+
 
 if __name__ == "__main__":
     # os.environ['HF_DATASETS_OFFLINE'] = '1'
