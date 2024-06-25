@@ -263,12 +263,15 @@ class BaseHQQModel:
             mixed = quant_config.pop('mixed')
             if mixed:
                 metrics_file = quant_config.pop('quant_metrics_file')
-                optimal_configs = find_optimal_configs(metrics_file, budget, time_limit=12, verbose=True)
+                optimal_configs = find_optimal_configs(
+                    metrics_file, budget, time_limit=120, verbose=True)
                 model.optimal_configs = optimal_configs
 
-        # Use the same quantization config for all linear layers. Use None to skip quantizing a specfic layer.
+        # Use the same quantization config for all linear layers.
+        # Use None to skip quantizing a specfic layer.
         if True in [(key in model.linear_tags) for key in quant_config.keys()]:
-            # If the user doesn't specify a key from get_linear_tags, the layer is not quantized via (key, None)
+            # If the user doesn't specify a key from get_linear_tags,
+            # the layer is not quantized via (key, None)
             patch_params = {key: None for key in model.linear_tags}
             patch_params.update(quant_config)
         else:

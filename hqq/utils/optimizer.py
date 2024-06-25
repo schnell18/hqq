@@ -6,13 +6,19 @@ from scipy.optimize import milp as scipy_milp
 from scipy.optimize import OptimizeResult
 from scipy.optimize import LinearConstraint
 from scipy.optimize import Bounds
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 
-def find_optimal_configs(model_metric_fp: str, budget: float, time_limit=10, verbose: bool=False) -> Dict:
+def find_optimal_configs(
+        model_metric_fp: str,
+        budget: float,
+        time_limit=10,
+        torelance_pct: int = 0,
+        verbose: bool = False
+) -> Dict:
     total_params, costs, mems, row_mapper, column_mapper = load_precomputed_metrics(model_metric_fp)
     # convert bit per paramter to total mega bytes
-    budget_mb = total_params * budget / 8 / 1024 / 1024
+    budget_mb = (100 + torelance_pct) / 100 * total_params * budget / 8 / 1024 / 1024
     optimizer_opts = {'disp': verbose, 'time_limit': time_limit}
     result = mip_solve(budget_mb, costs, mems, optimizer_opts)
     if result.success:
@@ -25,6 +31,7 @@ def find_optimal_configs(model_metric_fp: str, budget: float, time_limit=10, ver
         return configs
     else:
         raise ValueError(f"milp failed: {result.message}")
+
 
 def load_precomputed_metrics(fp: str) -> Tuple[int, np.ndarray, np.ndarray, pd.MultiIndex, pd.MultiIndex]:
     df = pd.read_csv(fp)
@@ -44,13 +51,14 @@ def load_precomputed_metrics(fp: str) -> Tuple[int, np.ndarray, np.ndarray, pd.M
         columns=['nbit1', 'gsize1', 'nbit2', 'gsize2']
     )
     total_params = df_params[df_params.columns[0]].sum()
-    return(
+    return (
         total_params,
         df_fnorm.to_numpy(),
         df_memgb.to_numpy(),
         df_fnorm.index,
         df_fnorm.columns
     )
+
 
 def mip_solve(
         budget: float,

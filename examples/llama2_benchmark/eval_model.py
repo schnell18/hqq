@@ -1,13 +1,16 @@
 import gc
 import numpy as np
-import torch, time
+import torch
+import time
 
 from datasets import load_dataset
 from tqdm import tqdm
 
+
 def cleanup():
     torch.cuda.empty_cache()
     gc.collect()
+
 
 def eval_ptb(model, tokenizer, max_length=1024, stride=512, verbose=True):
     dataset = load_dataset("ptb_text_only", "penn_treebank", split="test")
@@ -18,6 +21,7 @@ def eval_ptb(model, tokenizer, max_length=1024, stride=512, verbose=True):
         stride=stride,
         verbose=verbose
     )
+
 
 def eval_c4(model, tokenizer, max_length=1024, stride=512, verbose=True):
     dataset = load_dataset(
@@ -36,6 +40,7 @@ def eval_c4(model, tokenizer, max_length=1024, stride=512, verbose=True):
         verbose=verbose
     )
 
+
 def eval_wikitext2(model, tokenizer, max_length=1024, stride=512, verbose=True):
     dataset = load_dataset('wikitext', 'wikitext-2-raw-v1', split='test')
     return eval_ppl(
@@ -46,11 +51,14 @@ def eval_wikitext2(model, tokenizer, max_length=1024, stride=512, verbose=True):
         verbose=verbose
     )
 
-#Adapted from https://huggingface.co/transformers/v4.2.2/perplexity.html
-def eval_ppl(ds_type, model, tokenizer, dataset, text_column='text', max_length=1024, stride=512, verbose=True):
+
+# Adapted from https://huggingface.co/transformers/v4.2.2/perplexity.html
+def eval_ppl(
+        ds_type, model, tokenizer, dataset,
+        text_column='text', max_length=1024, stride=512, verbose=True):
     model.eval()
-    tokenizer.pad_token     = tokenizer.eos_token
-    tokenizer.padding_side  = "right"
+    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "right"
     tokenizer.add_eos_token = False
 
     encodings = tokenizer('\n\n'.join(dataset[text_column]), return_tensors='pt')
@@ -58,27 +66,31 @@ def eval_ppl(ds_type, model, tokenizer, dataset, text_column='text', max_length=
     encodings['input_ids'] = encodings['input_ids'].to('cuda')
 
     lls, t = [], []
-    for i in tqdm(range(0, encodings['input_ids'].size(1), stride), desc=ds_type, disable=not verbose):
-        begin_loc  = max(i + stride - max_length, 0)
-        end_loc    = min(i + stride, encodings['input_ids'].size(1))
-        trg_len    = end_loc - i
-        input_ids  = encodings['input_ids'][:,begin_loc:end_loc]
+    for i in tqdm(
+        range(0, encodings['input_ids'].size(1), stride),
+        desc=ds_type,
+        disable=not verbose
+    ):
+        begin_loc = max(i + stride - max_length, 0)
+        end_loc = min(i + stride, encodings['input_ids'].size(1))
+        trg_len = end_loc - i
+        input_ids = encodings['input_ids'][:, begin_loc:end_loc]
         target_ids = input_ids.clone()
-        target_ids[:,:-trg_len] = -100 #ignore context
+        target_ids[:, :-trg_len] = -100  # ignore context
 
         t1 = time.time()
         with torch.no_grad():
             log_likelihood = model(input_ids, labels=target_ids).loss * trg_len
         torch.cuda.synchronize()
         t2 = time.time()
-        t.append((t2-t1))
+        t.append((t2 - t1))
         lls.append(log_likelihood)
 
         del input_ids, target_ids
 
-    ppl       = np.round(float(torch.exp(torch.stack(lls).sum() / end_loc)), 4)
+    ppl = np.round(float(torch.exp(torch.stack(lls).sum() / end_loc)), 4)
     pred_time = np.round(np.mean(t), 3)
-    if(verbose):
+    if verbose:
         print(f'{ds_type} perplexity: {ppl}, time: {pred_time} sec')
 
     del encodings

@@ -39,6 +39,8 @@ def calc_fnorm(
                 for gsize2 in gsizes2:
                     wq_hqq = quant_hqq(w, nbits=nbit1, group_size=gsize1, optimize=True)
                     norm_hqq = torch.norm(w - wq_hqq).item()
+                    bpp = nbit1 + 2 * nbit2 / gsize1 + 32 / (gsize1 * gsize2)
+                    memmb = bpp * params / 8 / (1024**2)
                     dikt = {
                         'layer': layer,
                         'module': module,
@@ -47,7 +49,7 @@ def calc_fnorm(
                         'nbit2': nbit2,
                         'gsize2': gsize2,
                         'fnorm': norm_hqq,
-                        'memmb': (nbit1 + 2 * nbit2 / (gsize1 * gsize2)) * params / 8 / (1024**2),
+                        'memmb': memmb,
                         'params': params,
                     }
                     dikts.append(dikt)
