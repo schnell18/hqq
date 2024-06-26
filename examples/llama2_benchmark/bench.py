@@ -122,17 +122,17 @@ def experiment_quant_awq():
     )
 
 
-def experiment_redo_eval_autogptq_llama3():
-    models = ALL_MODELS[2:]
+def experiment_redo_autogptq_benchmark():
+    models = ALL_MODELS
     tasks = {
         'gptq': {
             "create_fn": create_autogptq_model,
             "quantize_fn": quantize_autogptq_model,
-            "configs": GPTQ_CONFIGS[-2:],
+            "configs": GPTQ_CONFIGS
         },
     }
     do_expermient(
-        "eval_redo_autogptq_llama3-8B-b3g64",
+        "eval_redo_autogptq_benchmark",
         models,
         tasks,
     )
@@ -663,7 +663,7 @@ def main():
     # experiment_quant_eval_mxq_torelance()
     # experiment_quant_eval_mxq_comprise()
     # experiment_quant_autogptq()
-    experiment_redo_eval_autogptq_llama3()
+    experiment_redo_autogptq_benchmark()
 
 
 def main1():
@@ -678,4 +678,13 @@ def main1():
 
 if __name__ == "__main__":
     # os.environ['HF_DATASETS_OFFLINE'] = '1'
+
+    max_threads = str(min(8, os.cpu_count()))
+    os.environ['OMP_NUM_THREADS'] = max_threads
+    os.environ['OPENBLAS_NUM_THREADS'] = max_threads
+    os.environ['MKL_NUM_THREADS'] = max_threads
+    os.environ['VECLIB_MAXIMUM_THREADS'] = max_threads
+    os.environ['NUMEXPR_NUM_THREADS'] = max_threads
+    os.environ['NUMEXPR_MAX_THREADS'] = max_threads
+
     main()
