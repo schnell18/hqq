@@ -119,11 +119,16 @@ def gen_calc_tasks():
             "layers": 80,
             "base_dir": "/data/hugginface/hub/models--meta-llama--Meta-Llama-3-70B/snapshots/b4d08b7db49d488da3ac49adf25a6b9ac01ae338"
         },
+        {
+            "model_id": "meta-llama/Meta-Llama-3.1-405B-Instruct",
+            'layers': 126,
+            'base_dir': "/data/hugginface/hub/models--meta-llama--Meta-Llama-3.1-405B-Instruct/snapshots/e04e3022cdc89bfed0db69f5ac1d249e21ee2d30/",
+        },
     ]
 
 
 def main():
-    calc_tasks = gen_calc_tasks()[:]
+    calc_tasks = gen_calc_tasks()[-1:]
     for task in calc_tasks:
         model_id = task["model_id"]
         t1 = timer()

@@ -1,5 +1,7 @@
 #!/bin/bash
 
+export HF_HOME=/data/hugginface
+
 if [ ! -d logs ]; then
     mkdir logs
 fi

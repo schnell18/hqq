@@ -372,6 +372,27 @@ def experiment_eval_mxq_extra():
     )
 
 
+def experiment_quantize_405B():
+
+    models = [
+        "meta-llama/Meta-Llama-3.1-405B-Instruct",
+    ]
+
+    tasks = {
+        'HQQ': {
+            "create_fn": create_hqq_model,
+            "quantize_fn": quantize_hqq_model,
+            "configs": HHQ_CONFIGS[1:2],
+        },
+    }
+    do_expermient(
+        "quant_hqq_405B",
+        models,
+        tasks,
+        quantize_only=True,
+    )
+
+
 def experiment_quantize_mxq():
     models = ALL_MODELS
     tasks = {
@@ -663,7 +684,8 @@ def main():
     # experiment_quant_eval_mxq_torelance()
     # experiment_quant_eval_mxq_comprise()
     # experiment_quant_autogptq()
-    experiment_redo_autogptq_benchmark()
+    # experiment_redo_autogptq_benchmark()
+    experiment_quantize_405B()
 
 
 def main1():
@@ -686,5 +708,6 @@ if __name__ == "__main__":
     os.environ['VECLIB_MAXIMUM_THREADS'] = max_threads
     os.environ['NUMEXPR_NUM_THREADS'] = max_threads
     os.environ['NUMEXPR_MAX_THREADS'] = max_threads
+    os.environ['HF_HOME'] = "/data/hugginface/"
 
     main()
