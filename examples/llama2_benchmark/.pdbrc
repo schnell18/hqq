@@ -6,5 +6,5 @@
 # b quant_llama2_hqq_demo.py:30
 # b hqq/models/base.py:265
 # b debug-quant-mem.py:18
-b hqq/models/hf/llama.py:71
-b hqq/models/base.py:260
+# b hqq/models/hf/llama.py:71
+# b hqq/models/base.py:260

@@ -390,6 +390,7 @@ def experiment_quantize_405B():
         models,
         tasks,
         quantize_only=True,
+        save_dir="/data/gqq-eval/snapshots/",
     )
 
 
