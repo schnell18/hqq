@@ -47,7 +47,7 @@ def prepare_model(model, tokenizer, n_samples=1024, max_tokens=512, use_triton=F
 
 def create_autogptq_model(model_id, quant_config, config_id, load_quantized, save_dir):
     quantized = False
-    quant_path = f"{save_dir}/{model_id}-{config_id}-autogptq"
+    quant_path = f"{save_dir}/{model_id}-{config_id}-gptq"
     if load_quantized and os.path.exists(quant_path):
         model = AutoGPTQForCausalLM.from_quantized(quant_path, device="cuda:0")
         tokenizer = transformers.AutoTokenizer.from_pretrained(model_id)
@@ -63,7 +63,7 @@ def quantize_autogptq_model(model, tokenizer, quant_config, model_id, config_id,
     model = prepare_model(model, tokenizer)
     t2 = time.time()
     print('Took ' + str(t2 - t1) + ' seconds to quantize the model with AutoGPTQ')
-    quant_path = f"{save_dir}/{model_id}-{config_id}-autogptq"
+    quant_path = f"{save_dir}/{model_id}-{config_id}-gptq"
     model.save_quantized(quant_path, use_safetensors=True)
     return model, t2 - t1
 

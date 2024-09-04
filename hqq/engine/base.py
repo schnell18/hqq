@@ -76,7 +76,7 @@ class HQQWrapper:
         save_dir_or_hub,
         compute_dtype: torch.dtype = float16,
         device="cuda",
-        cache_dir: Union[str,None] = "",
+        cache_dir: Union[str, None] = "",
         adapter: str = None,
     ):
         # Both local and hub-support

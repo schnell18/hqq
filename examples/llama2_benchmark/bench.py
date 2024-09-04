@@ -3,24 +3,21 @@ import gc
 import glob
 import logging
 import os
-import pandas as pd
-import sys
-import torch
-import transformers
 
-from adapter.autoawq import create_autoawq_model
-from adapter.autoawq import quantize_autoawq_model
-from adapter.autogptq import create_autogptq_model
-from adapter.autogptq import quantize_autogptq_model
-from auto_gptq import BaseQuantizeConfig as GPTQQuantConfig
-from adapter.hqq import create_hqq_model
-from adapter.hqq import quantize_hqq_model
 # from adapter.awq import create_awq_model
 # from adapter.awq import quantize_awq_model
 from datetime import datetime
-from eval_model import eval_wikitext2, eval_c4, eval_ptb
-from hqq.core.quantize import BaseQuantizeConfig as HQQQuantConfig
 
+import pandas as pd
+import torch
+import transformers
+from adapter.autoawq import create_autoawq_model, quantize_autoawq_model
+from adapter.autogptq import create_autogptq_model, quantize_autogptq_model
+from adapter.hqq import create_hqq_model, quantize_hqq_model
+from auto_gptq import BaseQuantizeConfig as GPTQQuantConfig
+from eval_model import eval_c4, eval_wikitext2
+from hqq.core.quantize import BaseQuantizeConfig as HQQQuantConfig
+from leaderboard import eval_llm_leaderboard
 from transformers import AutoModelForCausalLM
 
 ALL_MODELS = [
@@ -59,9 +56,12 @@ HHQ_CONFIGS = [
 ]
 
 AUTOAWQ_CONFIGS = [
-    ("b4g32", {"w_bit": 4, "q_group_size": 32, "zero_point": True, 'version': 'GEMM'}),
-    ("b4g64", {"w_bit": 4, "q_group_size": 64, "zero_point": True, 'version': 'GEMM'}),
-    ("b4g128", {"w_bit": 4, "q_group_size": 128, "zero_point": True, 'version': 'GEMM'}),
+    ("b4g32", {"w_bit": 4, "q_group_size": 32, "zero_point": True, "version": "GEMM"}),
+    ("b4g64", {"w_bit": 4, "q_group_size": 64, "zero_point": True, "version": "GEMM"}),
+    (
+        "b4g128",
+        {"w_bit": 4, "q_group_size": 128, "zero_point": True, "version": "GEMM"},
+    ),
     # 3-bit not supported by AutoAWQ right now
     # ("b3g64", {"w_bit": 3, "q_group_size": 64, "zero_point": True, 'version':'gemv_fast'}),
     # ("b3g128", {"w_bit": 3, "q_group_size": 128, "zero_point": True, 'version':'gemv_fast'}),
@@ -77,12 +77,30 @@ AWQ_CONFIGS = [
 ]
 
 GPTQ_CONFIGS = [
-    ("b4g32", GPTQQuantConfig(bits=4, group_size=32, damp_percent=0.01, desc_act=False)),
-    ("b4g64", GPTQQuantConfig(bits=4, group_size=64, damp_percent=0.01, desc_act=False)),
-    ("b4g128", GPTQQuantConfig(bits=4, group_size=128, damp_percent=0.01, desc_act=False)),
-    ("b3g32", GPTQQuantConfig(bits=3, group_size=32, damp_percent=0.01, desc_act=False)),
-    ("b3g64", GPTQQuantConfig(bits=3, group_size=64, damp_percent=0.01, desc_act=False)),
-    ("b3g128", GPTQQuantConfig(bits=3, group_size=128, damp_percent=0.01, desc_act=False)),
+    (
+        "b4g32",
+        GPTQQuantConfig(bits=4, group_size=32, damp_percent=0.01, desc_act=False),
+    ),
+    (
+        "b4g64",
+        GPTQQuantConfig(bits=4, group_size=64, damp_percent=0.01, desc_act=False),
+    ),
+    (
+        "b4g128",
+        GPTQQuantConfig(bits=4, group_size=128, damp_percent=0.01, desc_act=False),
+    ),
+    (
+        "b3g32",
+        GPTQQuantConfig(bits=3, group_size=32, damp_percent=0.01, desc_act=False),
+    ),
+    (
+        "b3g64",
+        GPTQQuantConfig(bits=3, group_size=64, damp_percent=0.01, desc_act=False),
+    ),
+    (
+        "b3g128",
+        GPTQQuantConfig(bits=3, group_size=128, damp_percent=0.01, desc_act=False),
+    ),
 ]
 
 
@@ -91,24 +109,19 @@ def experiment_debug():
         "meta-llama/Llama-2-7b-hf",
     ]
     tasks = {
-        'HQQ': {
+        "HQQ": {
             "create_fn": create_hqq_model,
             "quantize_fn": quantize_hqq_model,
-            "configs": HHQ_CONFIGS[-1:]
+            "configs": HHQ_CONFIGS[-1:],
         },
     }
-    do_expermient(
-        "debug_hqq_auto",
-        models,
-        tasks,
-        save_dir="snapshots-hqq"
-    )
+    do_expermient("debug_hqq_auto", models, tasks, save_dir="snapshots-hqq")
 
 
 def experiment_quant_awq():
     models = ALL_MODELS
     tasks = {
-        'awq': {
+        "awq": {
             "create_fn": create_autoawq_model,
             "quantize_fn": quantize_autoawq_model,
             "configs": AWQ_CONFIGS,
@@ -125,10 +138,10 @@ def experiment_quant_awq():
 def experiment_redo_autogptq_benchmark():
     models = ALL_MODELS
     tasks = {
-        'gptq': {
+        "gptq": {
             "create_fn": create_autogptq_model,
             "quantize_fn": quantize_autogptq_model,
-            "configs": GPTQ_CONFIGS
+            "configs": GPTQ_CONFIGS,
         },
     }
     do_expermient(
@@ -141,7 +154,7 @@ def experiment_redo_autogptq_benchmark():
 def experiment_quant_autogptq():
     models = ALL_MODELS
     tasks = {
-        'gptq': {
+        "gptq": {
             "create_fn": create_autogptq_model,
             "quantize_fn": quantize_autogptq_model,
             "configs": GPTQ_CONFIGS[3:],
@@ -157,7 +170,7 @@ def experiment_quant_autogptq():
 def experiment_eval_autogptq():
     models = ALL_MODELS
     tasks = {
-        'gptq': {
+        "gptq": {
             "create_fn": create_autogptq_model,
             "quantize_fn": quantize_autogptq_model,
             "configs": [GPTQ_CONFIGS[1]],
@@ -186,15 +199,16 @@ def experiment_eval_autogptq():
 #     )
 #
 
+
 def experiment_eval_g32():
     models = ALL_MODELS
     tasks = {
-        'HQQ': {
+        "HQQ": {
             "create_fn": create_hqq_model,
             "quantize_fn": quantize_hqq_model,
             "configs": [HHQ_CONFIGS[0], HHQ_CONFIGS[3]],
         },
-        'AWQ': {
+        "AWQ": {
             "create_fn": create_autoawq_model,
             "quantize_fn": quantize_autoawq_model,
             "configs": AUTOAWQ_CONFIGS[0:1],
@@ -215,23 +229,19 @@ def experiment_eval_g32():
 def experiment_eval_mix():
     models = ALL_MODELS
     tasks = {
-        'HQQ': {
+        "HQQ": {
             "create_fn": create_hqq_model,
             "quantize_fn": quantize_hqq_model,
             "configs": HHQ_CONFIGS[-4:],
         },
     }
-    do_expermient(
-        "eval_hqq_mix3",
-        models,
-        tasks
-    )
+    do_expermient("eval_hqq_mix3", models, tasks)
 
 
 def experiment_quant_mxq_boost():
     models = ALL_MODELS
     tasks = {
-        'HQQ': {
+        "HQQ": {
             "create_fn": create_hqq_model,
             "quantize_fn": quantize_hqq_model,
             "configs": HHQ_CONFIGS[-3:],
@@ -248,7 +258,7 @@ def experiment_quant_mxq_boost():
 def experiment_eval_mxq_boost():
     models = ALL_MODELS
     tasks = {
-        'HQQ': {
+        "HQQ": {
             "create_fn": create_hqq_model,
             "quantize_fn": quantize_hqq_model,
             "configs": HHQ_CONFIGS[-3:],
@@ -264,7 +274,7 @@ def experiment_eval_mxq_boost():
 def experiment_quantize_mxq_extra():
     models = ALL_MODELS
     tasks = {
-        'HQQ': {
+        "HQQ": {
             "create_fn": create_hqq_model,
             "quantize_fn": quantize_hqq_model,
             "configs": HHQ_CONFIGS[-4:],
@@ -292,7 +302,7 @@ def experiment_quant_eval_mxq_comprise():
             (cfg_name, HQQQuantConfig(mixed=True, budget=bits, quant_scale=True))
         )
     tasks = {
-        'HQQ': {
+        "HQQ": {
             "create_fn": create_hqq_model,
             "quantize_fn": quantize_hqq_model,
             "configs": equiv_mxq_configs,
@@ -329,10 +339,10 @@ def experiment_quant_eval_mxq_equiv():
     models = ALL_MODELS
     equiv_mxq_configs = []
     for cfg in HHQ_CONFIGS:
-        if cfg[0].startswith('b'):
+        if cfg[0].startswith("b"):
             bits = calc_bits(
-                cfg[1]['weight_quant_params']['nbits'],
-                cfg[1]['weight_quant_params']['group_size'],
+                cfg[1]["weight_quant_params"]["nbits"],
+                cfg[1]["weight_quant_params"]["group_size"],
                 8,
                 128,
             )
@@ -343,7 +353,7 @@ def experiment_quant_eval_mxq_equiv():
             )
 
     tasks = {
-        'HQQ': {
+        "HQQ": {
             "create_fn": create_hqq_model,
             "quantize_fn": quantize_hqq_model,
             "configs": equiv_mxq_configs,
@@ -359,7 +369,7 @@ def experiment_quant_eval_mxq_equiv():
 def experiment_eval_mxq_extra():
     models = ALL_MODELS
     tasks = {
-        'HQQ': {
+        "HQQ": {
             "create_fn": create_hqq_model,
             "quantize_fn": quantize_hqq_model,
             "configs": HHQ_CONFIGS[-4:],
@@ -373,13 +383,12 @@ def experiment_eval_mxq_extra():
 
 
 def experiment_quantize_405B():
-
     models = [
         "meta-llama/Meta-Llama-3.1-405B-Instruct",
     ]
 
     tasks = {
-        'HQQ': {
+        "HQQ": {
             "create_fn": create_hqq_model,
             "quantize_fn": quantize_hqq_model,
             "configs": HHQ_CONFIGS[1:2],
@@ -397,7 +406,7 @@ def experiment_quantize_405B():
 def experiment_quantize_mxq():
     models = ALL_MODELS
     tasks = {
-        'HQQ': {
+        "HQQ": {
             "create_fn": create_hqq_model,
             "quantize_fn": quantize_hqq_model,
             "configs": HHQ_CONFIGS[6:],
@@ -414,7 +423,7 @@ def experiment_quantize_mxq():
 def experiment_eval_mxq():
     models = ALL_MODELS
     tasks = {
-        'HQQ': {
+        "HQQ": {
             "create_fn": create_hqq_model,
             "quantize_fn": quantize_hqq_model,
             "configs": HHQ_CONFIGS[6:],
@@ -427,21 +436,22 @@ def experiment_eval_mxq():
     )
 
 
-# def experiment_autogptq():
-#     models = ALL_MODELS
-#     tasks = {
-#         'GPTQ': {
-#             "create_fn": create_autogptq_model,
-#             "quantize_fn": quantize_autogptq_model,
-#             "configs": GPTQ_CONFIGS,
-#         },
-#     }
-#     do_expermient(
-#         "gptq_benchmark",
-#         models,
-#         tasks,
-#         save_dir="snapshots"
-#     )
+def experiment_llm_leaderboard_autogptq():
+    models = ALL_MODELS[:-1]
+    tasks = {
+        "GPTQ": {
+            "create_fn": create_autogptq_model,
+            "quantize_fn": quantize_autogptq_model,
+            "configs": GPTQ_CONFIGS,
+        },
+    }
+    do_expermient(
+        "gptq_leaderboard",
+        models,
+        tasks,
+        task_type="eval_leaderboard",
+        save_dir="snapshots",
+    )
 
 
 # def experiment_autoawq():
@@ -461,47 +471,40 @@ def experiment_eval_mxq():
 #     )
 #
 
+
 def experiment_hqq():
     models = ALL_MODELS
     tasks = {
-        'HQQ': {
+        "HQQ": {
             "create_fn": create_hqq_model,
             "quantize_fn": quantize_hqq_model,
             "configs": HHQ_CONFIGS,
         },
     }
-    do_expermient(
-        "hqq_benchmark",
-        models,
-        tasks,
-        save_dir="snapshots"
-    )
+    do_expermient("hqq_benchmark", models, tasks, save_dir="snapshots")
 
 
 def experiment_hqq_mix():
     models = ALL_MODELS
     tasks = {
-        'HQQ': {
+        "HQQ": {
             "create_fn": create_hqq_model,
             "quantize_fn": quantize_hqq_model,
             "configs": HHQ_CONFIGS[4:],
         },
     }
-    do_expermient(
-        "hqq_benchmark_mix2",
-        models,
-        tasks,
-        save_dir="snapshots"
-    )
+    do_expermient("hqq_benchmark_mix2", models, tasks, save_dir="snapshots")
 
 
 def experiment_fp16_baseline():
     models = ALL_MODELS
     tasks = {
-        'FP16': {
+        "FP16": {
             "create_fn": create_fp16_model,
             "quantize_fn": None,
-            "configs": [("base", {}), ]
+            "configs": [
+                ("base", {}),
+            ],
         },
     }
     do_expermient(
@@ -511,88 +514,112 @@ def experiment_fp16_baseline():
     )
 
 
-def do_expermient(
-        experiment_name,
-        models,
-        tasks,
-        quantize_only=False,
-        save_dir="snapshots"
-):
+def _init_metrics(model_id, kind, config):
+    return {
+        "model": model_id.split("/")[1],
+        "method": kind,
+        "config": config[0],
+        "config_detail": config[1],
+        "quant_duration": 0,
+        "quant_mem_allot": 0,
+        "quant_mem_reserved": 0,
+        "fp_mem_allot": 0,
+        "fp_mem_reserved": 0,
+        "quant_duration": 0,
+        "ppl_wikitext": 0,
+        "ppl_c4": 0,
+        "duration_wikitext": 0,
+        "duration_c4": 0,
+        "ifeval": 0,
+        "bbh": 0,
+        "mathlevel5": 0,
+        "gpqa": 0,
+        "musr": 0,
+        "mmlupro": 0,
+    }
 
+
+def do_expermient(
+    experiment_name, models, tasks, task_type="quantize_only", save_dir="snapshots"
+):
     logging.basicConfig(
         format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
         level=logging.INFO,
-        datefmt="%Y-%m-%d %H:%M:%S"
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
 
     exp_result_name = experiment_name
     for kind, spec in tasks.items():
-        exp_result_name += '-' + kind
+        exp_result_name += "-" + kind
         configs = spec["configs"]
         for config in configs:
-            exp_result_name += '_' + config[0]
+            exp_result_name += "_" + config[0]
             for model_id in models:
-                metric = {
-                    'model': model_id.split('/')[1],
-                    'method': kind,
-                    'config': config[0],
-                    'config_detail': config[1],
-                    'quant_duration': 0,
-                    'quant_mem_allot': 0,
-                    'quant_mem_reserved': 0,
-                    'fp_mem_allot': 0,
-                    'fp_mem_reserved': 0,
-                    'quant_duration': 0,
-                    'ppl_wikitext': 0,
-                    'ppl_ptb': 0,
-                    'ppl_c4': 0,
-                    'duration_wikitext': 0,
-                    'duration_ptb': 0,
-                    'duration_c4': 0,
-                }
+                metric = _init_metrics(model_id, kind, config)
                 print("*" * 72)
-                if quantize_only:
+                if task_type == "quantize_only":
                     print(f"Quantizing {kind} on {model_id} w/ config: {config[0]}...")
-                else:
-                    print(f"Benckmarking {kind} on {model_id} w/ config: {config[0]}...")
-                print("*" * 72)
-                create_fn = spec["create_fn"]
-                quant_fn = spec["quantize_fn"]
-                model, tokenizer, quantized = create_fn(
-                    model_id,
-                    config[1],
-                    config[0],
-                    quant_fn is not None,
-                    save_dir
-                )
-                if quantized:
-                    metric['quant_mem_allot'], metric['quant_mem_reserved'] = get_memory_metrics()
-                else:
-                    metric['fp_mem_allot'], metric['fp_mem_reserved'] = get_memory_metrics()
-
-                if not quantized and quant_fn:
-                    metric['fp_mem_allot'], metric['fp_mem_reserved'] = get_memory_metrics()
-                    # avoid interventions between models
-                    quant_config = copy.deepcopy(config[1])
-                    if config[0].startswith('mxq-') and model_id in QUANT_METRICS_FILE_MAP:
-                        quant_config['quant_metrics_file'] = QUANT_METRICS_FILE_MAP[model_id]
-                    model, duration = quant_fn(
-                        model,
-                        tokenizer,
-                        quant_config,
-                        model_id,
-                        config[0],
-                        save_dir
+                elif task_type == "eval_ppl":
+                    print(
+                        f"Evaluating {kind} PPL on {model_id} w/ config: {config[0]}..."
                     )
-                    # persistent the quantized model
-                    os.sync()
-                    metric['quant_mem_allot'], metric['quant_mem_reserved'] = get_memory_metrics()
-                    metric['quant_duration'] = duration
-                # Evaluate the quantized model
-                if not quantize_only:
-                    metric = eval_ppls(model, tokenizer, metric)
+                else:
+                    print(
+                        f"Evaluating {kind} LLM Leaderboard benchmarks on {model_id} w/ config: {config[0]}..."
+                    )
+                print("*" * 72)
+
+                if task_type != "eval_leaderboard":
+                    create_fn = spec["create_fn"]
+                    quant_fn = spec["quantize_fn"]
+                    model, tokenizer, quantized = create_fn(
+                        model_id, config[1], config[0], quant_fn is not None, save_dir
+                    )
+                    if quantized:
+                        metric["quant_mem_allot"], metric["quant_mem_reserved"] = (
+                            get_memory_metrics()
+                        )
+                    else:
+                        metric["fp_mem_allot"], metric["fp_mem_reserved"] = (
+                            get_memory_metrics()
+                        )
+
+                    if not quantized and quant_fn:
+                        metric["fp_mem_allot"], metric["fp_mem_reserved"] = (
+                            get_memory_metrics()
+                        )
+                        # avoid interventions between models
+                        quant_config = copy.deepcopy(config[1])
+                        if (
+                            config[0].startswith("mxq-")
+                            and model_id in QUANT_METRICS_FILE_MAP
+                        ):
+                            quant_config["quant_metrics_file"] = QUANT_METRICS_FILE_MAP[
+                                model_id
+                            ]
+                        model, duration = quant_fn(
+                            model,
+                            tokenizer,
+                            quant_config,
+                            model_id,
+                            config[0],
+                            save_dir,
+                        )
+                        # persistent the quantized model
+                        os.sync()
+                        metric["quant_mem_allot"], metric["quant_mem_reserved"] = (
+                            get_memory_metrics()
+                        )
+                        metric["quant_duration"] = duration
+                    # Evaluate the quantized model
+                    if task_type == "eval_ppl":
+                        metric = eval_ppls(model, tokenizer, metric)
+                    cleanup(model)
+                else:
+                    metric = eval_llm_leaderboard(
+                        experiment_name, model_id, kind, config[0], save_dir, metric
+                    )
                 save_partial_metric(experiment_name, kind, model_id, config[0], metric)
-                cleanup(model)
 
     # combine metrics
     combine_metrics(experiment_name, exp_result_name)
@@ -603,19 +630,32 @@ def save_partial_metric(experiment_name, kind, model_id, config, metric):
     df = pd.DataFrame(metrics)
     result_dir = f"results/{experiment_name}"
     os.makedirs(result_dir, exist_ok=True)
-    model_short_id = model_id.split('/')[1]
+    model_short_id = model_id.split("/")[1]
     file_name = f"{result_dir}/partial-{kind}-{model_short_id}-{config}.csv"
     df.to_csv(
         file_name,
         columns=[
-            "method", "model", "config", "quant_duration",
-            "ppl_wikitext", "ppl_c4", "ppl_ptb",
-            "duration_wikitext", "duration_ptb", "duration_c4",
-            "quant_mem_allot", "quant_mem_reserved",
-            "fp_mem_allot", "fp_mem_reserved",
+            "method",
+            "model",
+            "config",
+            "quant_duration",
+            "ppl_wikitext",
+            "ppl_c4",
+            "duration_wikitext",
+            "duration_c4",
+            "quant_mem_allot",
+            "quant_mem_reserved",
+            "fp_mem_allot",
+            "fp_mem_reserved",
             "config_detail",
+            "ifeval",
+            "bbh",
+            "mathlevel5",
+            "gpqa",
+            "musr",
+            "mmlupro",
         ],
-        index=False
+        index=False,
     )
 
 
@@ -634,19 +674,16 @@ def combine_metrics(experiment_name, exp_result_name):
 def eval_ppls(model, tokenizer, metric):
     ppl_wikitext, duration_wikitext = eval_wikitext2(model, tokenizer, verbose=True)
     ppl_c4, duration_c4 = eval_c4(model, tokenizer, verbose=True)
-    ppl_ptb, duration_ptb = eval_ptb(model, tokenizer, verbose=True)
-    metric['ppl_wikitext'] = ppl_wikitext
-    metric['ppl_ptb'] = ppl_ptb
-    metric['ppl_c4'] = ppl_c4
-    metric['duration_wikitext'] = duration_wikitext
-    metric['duration_ptb'] = duration_ptb
-    metric['duration_c4'] = duration_c4
+    metric["ppl_wikitext"] = ppl_wikitext
+    metric["duration_wikitext"] = duration_wikitext
+    metric["duration_c4"] = duration_c4
     return metric
 
 
 def create_fp16_model(model_id, quant_config, config_id, load_quantized, save_dir):
     model = AutoModelForCausalLM.from_pretrained(
-        model_id, device_map="auto", torch_dtype=torch.float16)
+        model_id, device_map="auto", torch_dtype=torch.float16
+    )
     tokenizer = transformers.AutoTokenizer.from_pretrained(model_id)
     return model, tokenizer, False
 
@@ -686,29 +723,20 @@ def main():
     # experiment_quant_eval_mxq_comprise()
     # experiment_quant_autogptq()
     # experiment_redo_autogptq_benchmark()
-    experiment_quantize_405B()
-
-
-def main1():
-    # os.environ['HF_DATASETS_OFFLINE'] = '1'
-    args = sys.argv[1:]
-    if len(args) > 0:
-        if args[0] == 'quant':
-            experiment_quant_mxq_boost()
-        else:
-            experiment_eval_mxq_boost()
+    # experiment_quantize_405B()
+    experiment_llm_leaderboard_autogptq()
 
 
 if __name__ == "__main__":
     # os.environ['HF_DATASETS_OFFLINE'] = '1'
 
     max_threads = str(min(8, os.cpu_count()))
-    os.environ['OMP_NUM_THREADS'] = max_threads
-    os.environ['OPENBLAS_NUM_THREADS'] = max_threads
-    os.environ['MKL_NUM_THREADS'] = max_threads
-    os.environ['VECLIB_MAXIMUM_THREADS'] = max_threads
-    os.environ['NUMEXPR_NUM_THREADS'] = max_threads
-    os.environ['NUMEXPR_MAX_THREADS'] = max_threads
-    os.environ['HF_HOME'] = "/data/hugginface/"
+    os.environ["OMP_NUM_THREADS"] = max_threads
+    os.environ["OPENBLAS_NUM_THREADS"] = max_threads
+    os.environ["MKL_NUM_THREADS"] = max_threads
+    os.environ["VECLIB_MAXIMUM_THREADS"] = max_threads
+    os.environ["NUMEXPR_NUM_THREADS"] = max_threads
+    os.environ["NUMEXPR_MAX_THREADS"] = max_threads
+    os.environ["HF_HOME"] = "/data/hugginface/"
 
     main()

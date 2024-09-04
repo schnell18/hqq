@@ -51,8 +51,22 @@ def compare_pair(model_id, layers, output_dir):
         for matrix in matricies:
             wo, wq = load_weight(matrix, output_dir, st_file)
             diff = torch.norm(wo - wq).item()
-            kurt = kurtosis(wo.numpy(), axis=None)
-            print(f"{matrix} FNorm Diff: {diff:.5f} Kurtosis: {kurt:.2f}")
+            kurt_peason = kurtosis(
+                wo.numpy(),
+                axis=None,
+                fisher=False,
+                bias=True,
+                nan_policy='omit'
+            )
+            kurt_fisher = kurtosis(
+                wo.numpy(),
+                axis=None,
+                fisher=True,
+                bias=True,
+                nan_policy='omit'
+            )
+            #print(f"{matrix} FNorm Diff: {diff:.5f} Kurtosis: {kurt:.2f}")
+            print(f"{matrix},{diff:.5f},{kurt_fisher:.3f},{kurt_peason:.3f}")
 
 
 if __name__ == "__main__":

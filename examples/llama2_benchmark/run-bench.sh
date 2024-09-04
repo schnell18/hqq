@@ -1,6 +1,6 @@
 #!/bin/bash
 
-export HF_HOME=/data/hugginface
+# export HF_HOME=/data/hugginface
 
 if [ ! -d logs ]; then
     mkdir logs
