@@ -174,12 +174,8 @@ def _cal_leaderboard_score(results):
 
 
 def _cal_leaderboard_mathlevel5(results):
-    subtask_names = results["group_subtasks"]["leaderboard_math_hard"]
-    scores = []
-    for metric in subtask_names:
-        value = results["results"][metric]["exact_match,none"]
-        scores.append(_cal_normalized_score(value, 0, 1.0))
-    return sum(scores) / len(scores)
+    value = results["results"]["leaderboard_math_hard"]["exact_match,none"]
+    return _cal_normalized_score(value, 0, 1.0)
 
 
 def _cal_leaderboard_bbh(results):
@@ -262,9 +258,11 @@ if __name__ == "__main__":
         results = json.load(fh)
         t = _cal_leaderboard_score(results)
         ifeval, bbh, mathlevel5, gpqa, musr, mmlupro = _cal_leaderboard_score(results)
-        print(f"ifeval={ifeval}")
-        print(f"bbh={bbh}")
-        print(f"mathlevel5={mathlevel5}")
-        print(f"gpqa={gpqa}")
-        print(f"musr={musr}")
-        print(f"mmlupro={mmlupro}")
+        avg = (ifeval + bbh + mathlevel5 + gpqa + musr + mmlupro) / 6
+        print(f"avg={avg:.2f}")
+        print(f"ifeval={ifeval:.2f}")
+        print(f"bbh={bbh:.2f}")
+        print(f"mathlevel5={mathlevel5:.2f}")
+        print(f"gpqa={gpqa:.2f}")
+        print(f"musr={musr:.2f}")
+        print(f"mmlupro={mmlupro:.2f}")
