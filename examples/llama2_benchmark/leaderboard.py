@@ -215,7 +215,7 @@ def _cal_leaderboard_musr(results):
 
 def _cal_leaderboard_mmlu_pro(results):
     value = results["results"]["leaderboard_mmlu_pro"]["acc,none"]
-    return _cal_normalized_score(value, 0, 1.0)
+    return _cal_normalized_score(value, 0.1, 1.0)
 
 
 def _cal_leaderboard_ifeval_score(results):
