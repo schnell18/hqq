@@ -195,15 +195,8 @@ def _cal_leaderboard_bbh(results):
 
 
 def _cal_leaderboard_gpqa(results):
-    subtask_names = results["group_subtasks"]["leaderboard_gpqa"]
-    metrics = {}
-    for name in subtask_names:
-        metrics[name] = len(results["configs"][name]["doc_to_choice"])
-    scores = []
-    for metric, choices in metrics.items():
-        value = results["results"][metric]["acc_norm,none"]
-        scores.append(_cal_normalized_score(value, 1 / choices, 1.0))
-    return sum(scores) / len(scores)
+    value = results["results"]["leaderboard_gpqa"]["acc_norm,none"]
+    return _cal_normalized_score(value, 1 / 4, 1.0)
 
 
 # refer to: https://huggingface.co/docs/leaderboards/open_llm_leaderboard/normalization#example-normalizing-musr-scores
