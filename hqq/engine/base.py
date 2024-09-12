@@ -1,10 +1,12 @@
 # Written by Dr. Hicham Badri @Mobius Labs GmbH - 2023
 #####################################################
 from abc import abstractmethod
-from ..models.base import BaseHQQModel
+from typing import Union
+
 import torch
 from torch import float16
-from typing import Union
+
+from ..models.base import BaseHQQModel
 
 # Wrapper that makes it easier to add quantization support to different engines (HF, VLLM, etc.)
 
@@ -78,9 +80,12 @@ class HQQWrapper:
         device="cuda",
         cache_dir: Union[str, None] = "",
         adapter: str = None,
+        **kwargs,
     ):
         # Both local and hub-support
-        save_dir = BaseHQQModel.try_snapshot_download(save_dir_or_hub, cache_dir=cache_dir)
+        save_dir = BaseHQQModel.try_snapshot_download(
+            save_dir_or_hub, cache_dir=cache_dir
+        )
         arch_key = cls._get_arch_key_from_save_dir(save_dir)
         cls._check_arch_support(arch_key)
 
