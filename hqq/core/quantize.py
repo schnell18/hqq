@@ -1,14 +1,15 @@
 # Written by Dr. Hicham Badri @Mobius Labs GmbH - 2023
 #####################################################
-import torch
-from torch import uint8, int32, float16, nn, Tensor
 import copy
 from enum import Enum
 from typing import Union
 
-from .utils import is_divisible
-from .optimize import optimize_weights_proximal
+import torch
+from torch import Tensor, float16, int32, nn, uint8
+
 from .bitpack import BitPack
+from .optimize import optimize_weights_proximal
+from .utils import is_divisible
 
 
 # Main HQQ Quantizer
@@ -18,8 +19,8 @@ class Quantizer:
 
     bit_to_packing = {
         8: "8bit_u8",
-        6: "8bit_u8", #todo: bitpacking
-        5: "8bit_u8", #todo: bitpacking
+        6: "8bit_u8",  # todo: bitpacking
+        5: "8bit_u8",  # todo: bitpacking
         4: "4bit_u8",
         3: "3bit_32",
         2: "2bit_u8",
@@ -869,6 +870,11 @@ class HQQLinear(nn.Module):
 
         return out
 
+    # TODO: fix this hack later for open_clip
+    @property
+    def weight(self):
+        return self.dequantize()
+
 
 def hqq_base_quant_config(
     nbits: int = 4,
@@ -878,8 +884,8 @@ def hqq_base_quant_config(
     offload_meta: bool = False,  # meta-data should be quantized with the same settings to use offload_meta
     view_as_float: bool = False,
     axis: int = 0,
-    mixed: bool = False, # Auto tune nbits and group_size according to weight distribution
-    budget: float = 4.0, # overall quantization budget as bits per parameter
+    mixed: bool = False,  # Auto tune nbits and group_size according to weight distribution
+    budget: float = 4.0,  # overall quantization budget as bits per parameter
 ):
     assert (
         nbits in Quantizer.SUPPORTED_BITS

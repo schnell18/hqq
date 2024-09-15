@@ -1,7 +1,11 @@
+import os
 from pathlib import Path
 
-import numpy as np
+import open_clip
 import torch
+from open_clip import tokenizer
+from PIL import Image
+from skimage import data_dir
 
 from hqq.core.quantize import BaseQuantizeConfig
 from hqq.engine.open_clip import HQQOpenCLIP
@@ -40,56 +44,94 @@ def load_quantized(model_id):
     return model
 
 
-def normalize_images_clip(data_np_in, BCHW=True):
-    # Pre-processing
-    mean_clip = np.array([0.4815, 0.4578, 0.4082], "float32")
-    std_clip = np.array([0.2686, 0.2613, 0.2758], "float32")
+def compare_weights_raw(model_id):
+    qnt_pt_file = "snapshots/" + model_id + "/qmodel.pt"
+    ref_pt_file = "/home/justin/.cache/huggingface/hub/models--laion--CLIP-ViT-H-14-laion2B-s32B-b79K/snapshots/de081ac0a0ca8dc9d1533eed1ae884bb8ae1404b/open_clip_pytorch_model.bin"
+    qnt = torch.load(qnt_pt_file)
+    ref = torch.load(ref_pt_file)
+    print("*" * 72)
+    print("from quantized file")
+    for k in qnt:
+        print(k)
+    print("*" * 72)
+    print("from original file")
+    for k in ref:
+        print(k)
 
-    data_t = (
-        torch.from_numpy(data_np_in).float()
-        if (type(data_np_in) is np.ndarray)
-        else data_np_in.float()
+
+def compare_weights(model_id):
+    model, model_ref, _ = create_model_dual(model_id)
+    dict1 = dict(model.named_parameters())
+    dict2 = dict(model_ref.named_parameters())
+    for name, param in dict1.items():
+        param_ref = dict2.get(name, None)
+        if param_ref is not None:
+            if not torch.allclose(param_ref.data, param.data, rtol=0.0, equal_nan=True):
+                print(f"weight differs: {name}")
+                if name == "text_projection":
+                    print(param)
+                    print(param_ref)
+            else:
+                print(f"weight same: {name}")
+        else:
+            print(f"not in ref model: {name}")
+
+
+def create_model_dual(model_id):
+    model = load_quantized(model_id)
+    model = model.half().cuda()
+
+    # Load reference model to compare with
+    comps = model_id.split("/")
+    elems = comps[1].split("-")
+    model_name = "-".join(elems[1:4])
+    pretrained = "-".join(elems[4:])
+    model_ref, _, preprocess = open_clip.create_model_and_transforms(
+        model_name, pretrained=pretrained
     )
-    data_t = (data_t / 255.0 - mean_clip) / std_clip
-    data_t = data_t.swapaxes(2, 3).swapaxes(1, 2) if (BCHW) else data_t
-    return data_t
+    model_ref = model_ref.half().cuda()
+    return model, model_ref, preprocess
 
 
 def compare(model_id):
-    model = load_quantized(model_id)
-    model = model.half()
-    model = model.cuda()
+    model, model_ref, preprocess = create_model_dual(model_id)
     model.eval()
-    # Load reference model to compare with
-    model_ref = HQQOpenCLIP.create_model(model_id, device="cpu")
-    model_ref = model_ref.half().cuda()
     model_ref.eval()
 
-    # Compare the compressed model with the original
-    x = np.random.rand(16, 224, 224, 3)
-    x = normalize_images_clip(x).half().cuda()
+    # preprocess image and text
+    img = Image.open(os.path.join(data_dir, "astronaut.png")).convert("RGB")
+    img_preprocessed = preprocess(img).cuda().unsqueeze(0)
 
-    # Quantized model
-    with torch.no_grad():
-        y_q, _, _ = model(x)
-        y_q /= torch.norm(y_q, p=2, dim=-1, keepdim=True)
+    descriptions = {
+        "page": "a page of text about segmentation",
+        "chelsea": "a facial photo of a tabby cat",
+        "astronaut": "a portrait of an astronaut with the American flag",
+        "rocket": "a rocket standing on a launchpad",
+        "motorcycle_right": "a red motorcycle standing in a garage",
+        "camera": "a person looking at a camera on a tripod",
+        "horse": "a black-and-white silhouette of a horse",
+        "coffee": "a cup of coffee on a saucer",
+    }
+    texts = descriptions.values()
+    text_processed = tokenizer.tokenize(texts).cuda()
 
-    # Full-precision
-    with torch.no_grad():
-        y_r, _, _ = model_ref(x)
-        y_r /= torch.norm(y_r, p=2, dim=-1, keepdim=True)
+    with torch.amp.autocast("cuda"):
+        img_embedding, text_embedding, _ = model_ref(img_preprocessed, text_processed)
+    probs = (100 * img_embedding @ text_embedding.T).softmax(dim=-1)
+    print(probs)
 
-    # We want the dot product to be as close as possible to 1
-    print(
-        "Average dot-product score",
-        float(torch.diag(torch.matmul(y_q, y_r.t())).mean()),
-    )  # ~0.998 (ViT-H-14 @4bit)
+    with torch.amp.autocast("cuda"):
+        img_embedding, text_embedding, _ = model(img_preprocessed, text_processed)
+    probs = (100 * img_embedding @ text_embedding.T).softmax(dim=-1)
+    print(probs)
 
 
 def main():
     # quant_models(model_ids)
     # load_quantized(model_ids[0])
-    compare(model_ids[2])
+    # compare(model_ids[2])
+    # compare_weights(model_ids[2])
+    compare_weights_raw(model_ids[2])
 
 
 if __name__ == "__main__":
