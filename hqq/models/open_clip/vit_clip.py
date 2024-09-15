@@ -16,7 +16,7 @@ class VitCLIPPatch(BasePatch):
         return [
             "mlp.c_fc",
             "mlp.c_proj",
-            "attn.out_proj",
+            # "attn.out_proj",
         ]
 
     @classmethod
@@ -47,21 +47,21 @@ class VitCLIPPatch(BasePatch):
 
     @classmethod
     def patch_linearlayers(cls, model, patch_fct, patch_params, verbose=True):
-        attns = ["out_proj"]
+        # attns = ["out_proj"]
         mlps = ["c_fc", "c_proj"]
 
         # patch vision model
         blocks = model.visual.transformer.resblocks
         for i in tqdm(range(len(blocks)), disable=not verbose):
-            attn_obj = blocks[i].attn
-            for item in attns:
-                module = f"attn.{item}"
-                quant_config = cls.get_optimal_config(model, i, module, patch_params)
-                setattr(
-                    attn_obj,
-                    item,
-                    patch_fct(getattr(attn_obj, item), quant_config),
-                )
+            # attn_obj = blocks[i].attn
+            # for item in attns:
+            #     module = f"attn.{item}"
+            #     quant_config = cls.get_optimal_config(model, i, module, patch_params)
+            #     setattr(
+            #         attn_obj,
+            #         item,
+            #         patch_fct(getattr(attn_obj, item), quant_config),
+            #     )
             mlp_obj = blocks[i].mlp
             for item in mlps:
                 module = f"mlp.{item}"
@@ -71,15 +71,15 @@ class VitCLIPPatch(BasePatch):
         # patch text model
         blocks = model.transformer.resblocks
         for i in tqdm(range(len(blocks)), disable=not verbose):
-            attn_obj = blocks[i].attn
-            for item in attns:
-                module = f"attn.{item}"
-                quant_config = cls.get_optimal_config(model, i, module, patch_params)
-                setattr(
-                    attn_obj,
-                    item,
-                    patch_fct(getattr(attn_obj, item), quant_config),
-                )
+            # attn_obj = blocks[i].attn
+            # for item in attns:
+            #     module = f"attn.{item}"
+            #     quant_config = cls.get_optimal_config(model, i, module, patch_params)
+            #     setattr(
+            #         attn_obj,
+            #         item,
+            #         patch_fct(getattr(attn_obj, item), quant_config),
+            #     )
             mlp_obj = blocks[i].mlp
             for item in mlps:
                 module = f"mlp.{item}"

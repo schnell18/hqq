@@ -75,10 +75,10 @@ class HQQOpenCLIP(HQQWrapper):
         model.save_quantized = lambda save_dir: cls.save_quantized_(
             model=model, save_dir=save_dir
         )
-        model.cuda = lambda *args, **kwargs: model if (quantized) else model.cuda
-        model.to = lambda *args, **kwargs: model if (quantized) else model.to
-        model.float = lambda *args, **kwargs: model if (quantized) else model.float
-        model.half = lambda *args, **kwargs: model if (quantized) else model.half
+        # model.cuda = lambda *args, **kwargs: model if (quantized) else model.cuda
+        # model.to = lambda *args, **kwargs: model if (quantized) else model.to
+        # model.float = lambda *args, **kwargs: model if (quantized) else model.float
+        # model.half = lambda *args, **kwargs: model if (quantized) else model.half
         model.base_class = ViTCLIPHQQ
 
     @classmethod
