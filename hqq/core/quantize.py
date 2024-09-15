@@ -1,7 +1,5 @@
 # Written by Dr. Hicham Badri @Mobius Labs GmbH - 2023
 #####################################################
-import torch
-from torch import uint8, int32, float16, nn, Tensor
 import copy
 from enum import Enum
 from typing import Union
@@ -10,6 +8,9 @@ from .utils import is_divisible, encode_safetensor_type, decode_safetensor_type
 from .optimize import optimize_weights_proximal
 from .bitpack import BitPack
 from termcolor import colored
+import torch
+from torch import Tensor, float16, int32, nn, uint8
+
 
 _META_TYPE = {
     "scale": torch.Tensor,
@@ -1071,6 +1072,11 @@ class HQQLinear(nn.Module):
             out += self.bias
 
         return out
+
+    # TODO: fix this hack later for open_clip
+    @property
+    def weight(self):
+        return self.dequantize()
 
 
 def hqq_base_quant_config(

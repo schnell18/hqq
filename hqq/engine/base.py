@@ -36,7 +36,7 @@ class HQQWrapper:
 
     @classmethod
     def _check_arch_support(cls, arg):
-        arch = arg if (isinstance(arg, str)) else arg.arch_key
+        arch = arg if (isinstance(arg, str)) else getattr(arg, "arch_key", None)
         assert arch in cls._HQQ_REGISTRY, (
             "Model architecture " + arch + " not supported yet."
         )
