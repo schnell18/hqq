@@ -1,16 +1,17 @@
 # SPDX-License-Identifier: Apache-2.0
 # Written by Dr. Hicham Badri @Mobius Labs GmbH - 2023
 
-import torch
-from torch import uint8, int32, float16, nn, Tensor
 import copy
 from enum import Enum
 from typing import Union
 
-from .utils import is_divisible, encode_safetensor_type, decode_safetensor_type
-from .optimize import optimize_weights_proximal
-from .bitpack import BitPack
+import torch
 from termcolor import colored
+from torch import Tensor, float16, int32, nn, uint8
+
+from .bitpack import BitPack
+from .optimize import optimize_weights_proximal
+from .utils import decode_safetensor_type, encode_safetensor_type, is_divisible
 
 _META_TYPE = {
     "scale": torch.Tensor,
@@ -123,10 +124,12 @@ class Quantizer:
         min_max = [min_v, max_v]
 
         # Note: here we work with the inverse of the scale to avoid division and quantize instead via W*scale + zero, the scale is inverted later on.
-        denom = (_max - _min)
-        scale = (max_v / denom)
-        scale = torch.where(denom.abs() <= 1e-4, torch.full_like(scale, 1.0), scale) #Avoid small denom values
-        scale = scale.clamp(max=2e4) # clamp to avoid half-precision problems
+        denom = _max - _min
+        scale = max_v / denom
+        scale = torch.where(
+            denom.abs() <= 1e-4, torch.full_like(scale, 1.0), scale
+        )  # Avoid small denom values
+        scale = scale.clamp(max=2e4)  # clamp to avoid half-precision problems
         zero = -_min * scale
 
         # Round zero as in: https://github.com/casper-hansen/AutoAWQ/blob/main/awq/quantize/quantizer.py#L42C9-L42C14
@@ -253,19 +256,43 @@ class Quantizer:
 hqq_aten_is_available = False
 try:
     import hqq_aten
+
     hqq_aten_is_available = True
 
     @torch.library.custom_op("hqq::hqq_aten_dequantize", mutates_args=())
-    def hqq_aten_dequantize(W_q: Tensor, scale: Tensor , zero:Tensor, N: int, K: int, group_size: int, nbits: int, axis: int, packing: str) -> Tensor:
-        return hqq_aten.dequantize(W_q, scale, zero, N, K, group_size, nbits, axis, packing)
+    def hqq_aten_dequantize(
+        W_q: Tensor,
+        scale: Tensor,
+        zero: Tensor,
+        N: int,
+        K: int,
+        group_size: int,
+        nbits: int,
+        axis: int,
+        packing: str,
+    ) -> Tensor:
+        return hqq_aten.dequantize(
+            W_q, scale, zero, N, K, group_size, nbits, axis, packing
+        )
 
     @torch.library.register_fake("hqq::hqq_aten_dequantize")
-    def hqq_aten_dequantize_fake(W_q: Tensor, scale: Tensor , zero:Tensor, N: int, K: int, group_size: int, nbits: int, axis: int, packing: str) -> Tensor:
+    def hqq_aten_dequantize_fake(
+        W_q: Tensor,
+        scale: Tensor,
+        zero: Tensor,
+        N: int,
+        K: int,
+        group_size: int,
+        nbits: int,
+        axis: int,
+        packing: str,
+    ) -> Tensor:
         return torch.empty((N, K), device=W_q.device, dtype=scale.dtype)
 
 except Exception:
     hqq_aten = None
     hqq_aten_is_available = False
+
 
 class HQQBackend(Enum):
     # Name of the forward functions
@@ -385,6 +412,8 @@ class HQQMatmulCachedDeq(torch.autograd.Function):
 # Main linear layer
 PRINT_ZERO_SCALE_DEPRECATED = True
 PRINT_ATEN_WARNING = True
+
+
 class HQQLinear(nn.Module):
     # Default backend
     backend = HQQBackend.PYTORCH
@@ -432,12 +461,20 @@ class HQQLinear(nn.Module):
     def initialize(self):
         global PRINT_ZERO_SCALE_DEPRECATED
         if self.linear_layer is not None:
-            if(self.quant_config['scale_quant_params'] is not None or self.quant_config['zero_quant_params'] is not None):
-                if(PRINT_ZERO_SCALE_DEPRECATED):
-                    print(colored('Warning: Quantizing zeros/scales is deprecated. This setting will be ignored.'  , 'yellow'))
+            if (
+                self.quant_config["scale_quant_params"] is not None
+                or self.quant_config["zero_quant_params"] is not None
+            ):
+                if PRINT_ZERO_SCALE_DEPRECATED:
+                    print(
+                        colored(
+                            "Warning: Quantizing zeros/scales is deprecated. This setting will be ignored.",
+                            "yellow",
+                        )
+                    )
                     PRINT_ZERO_SCALE_DEPRECATED = False
-                self.quant_config['scale_quant_params'] = None
-                self.quant_config['zero_quant_params'] = None
+                self.quant_config["scale_quant_params"] = None
+                self.quant_config["zero_quant_params"] = None
 
             # Handle group_size==None
             if self.quant_config["weight_quant_params"]["group_size"] == None:
@@ -456,7 +493,7 @@ class HQQLinear(nn.Module):
                 )
             )
 
-            #Clear-up parameters
+            # Clear-up parameters
             if self.del_orig:
                 for name, param in self.linear_layer.named_parameters():
                     setattr(self.linear_layer, name, None)
@@ -475,7 +512,7 @@ class HQQLinear(nn.Module):
     ):
         dummy_linear = torch.nn.Linear(1, 1)
         dummy_linear.in_features = weight.shape[1]
-        dummy_linear.out_features= weight.shape[0]
+        dummy_linear.out_features = weight.shape[0]
         dummy_linear.weight.data = weight
         dummy_linear.bias = bias
 
@@ -502,11 +539,17 @@ class HQQLinear(nn.Module):
         if "aten" in backend.value and PRINT_ATEN_WARNING:
             if hqq_aten_is_available is False:
                 print(
-                    colored("ATEN/CUDA backend not availabe. Make sure you install the hqq_aten library.", "yellow")
+                    colored(
+                        "ATEN/CUDA backend not availabe. Make sure you install the hqq_aten library.",
+                        "yellow",
+                    )
                 )
                 return
             print(
-                colored("Warning: the ATEN/CUDA backend only supports axis=0 and GPU runtime.", "yellow")
+                colored(
+                    "Warning: the ATEN/CUDA backend only supports axis=0 and GPU runtime.",
+                    "yellow",
+                )
             )
             PRINT_ATEN_WARNING = False
         HQQLinear.backend = backend
@@ -680,7 +723,6 @@ class HQQLinear(nn.Module):
                 kwargs["destination"][kwargs["prefix"] + key] = value
         return state
 
-
     def _load_from_state_dict(
         self,
         state_dict,
@@ -691,17 +733,18 @@ class HQQLinear(nn.Module):
         unexpected_keys,
         error_msgs,
     ):
-
         layer_state_dict = {}
         for key in self.state_dict_keys():
-            if(prefix + key in state_dict):
+            if prefix + key in state_dict:
                 layer_state_dict[key] = state_dict.pop(prefix + key)
             else:
-                if(key not in ['bias']):
+                if key not in ["bias"]:
                     missing_keys.append(prefix + key)
 
-        if 'W_q' in layer_state_dict:
-            layer_state_dict['W_q'] = nn.Parameter(layer_state_dict['W_q'], requires_grad=False)
+        if "W_q" in layer_state_dict:
+            layer_state_dict["W_q"] = nn.Parameter(
+                layer_state_dict["W_q"], requires_grad=False
+            )
             self.load_state_dict(layer_state_dict, strict=strict)
         else:
             missing_keys.append(prefix + "W_q")
@@ -916,7 +959,8 @@ class HQQLinear(nn.Module):
             W_q,
             meta["scale"],
             meta["zero"],
-            N, K,
+            N,
+            K,
             meta["group_size"] if (meta["group_size"]) else -1,
             meta["nbits"],
             meta["axis"],
@@ -926,9 +970,9 @@ class HQQLinear(nn.Module):
     def dequantize_aten(self):
         # Dequantize
         assert self.ready, "model was not quantized"
-        assert (
-            self.meta["axis"] == 0
-        ), "only axis=0 is supported. Use HQQLinear.set_backend(HQQBackend.PYTORCH) instead."
+        assert self.meta["axis"] == 0, (
+            "only axis=0 is supported. Use HQQLinear.set_backend(HQQBackend.PYTORCH) instead."
+        )
 
         W_q, meta = self.W_q, self.meta
         device = W_q.device
@@ -1073,6 +1117,11 @@ class HQQLinear(nn.Module):
 
         return out
 
+    # TODO: fix this hack later for open_clip
+    @property
+    def weight(self):
+        return self.dequantize()
+
 
 def hqq_base_quant_config(
     nbits: int = 4,
@@ -1082,16 +1131,16 @@ def hqq_base_quant_config(
     offload_meta: bool = False,  # meta-data should be quantized with the same settings to use offload_meta
     view_as_float: bool = False,
     axis: int = 1,
-    mixed: bool = False, # Auto tune nbits and group_size according to weight distribution
-    budget: float = 4.0, # overall quantization budget as bits per parameter
+    mixed: bool = False,  # Auto tune nbits and group_size according to weight distribution
+    budget: float = 4.0,  # overall quantization budget as bits per parameter
 ):
-    assert (
-        nbits in Quantizer.SUPPORTED_BITS
-    ), "nbits value not supported. Check Quantizer.SUPPORTED_BITS."
+    assert nbits in Quantizer.SUPPORTED_BITS, (
+        "nbits value not supported. Check Quantizer.SUPPORTED_BITS."
+    )
     if group_size is not None:
-        assert is_divisible(
-            group_size, 8
-        ), "Invalid group_size param: the value should be a multiple of 8."
+        assert is_divisible(group_size, 8), (
+            "Invalid group_size param: the value should be a multiple of 8."
+        )
     weight_quant_params = {
         "nbits": nbits,
         "channel_wise": True,

@@ -22,6 +22,7 @@ from ..backends.torchao import HQQLinearTorchWeightOnlynt4
 from safetensors.torch import save_file
 from ..utils.optimizer import find_optimal_configs
 
+
 _HQQ_BACKEND_CLASSES = [HQQLinearTorchWeightOnlynt4]
 
 try:
@@ -37,7 +38,6 @@ try:
     _HQQ_BACKEND_CLASSES.append(MarlinLinear)
 except Exception:
     pass
-
 
 # Defined what is qualified as "linear layer"
 _QUANT_LAYERS = [nn.Linear, HQQLinear] + _HQQ_LORA_CLASSES + _HQQ_BACKEND_CLASSES
@@ -227,7 +227,7 @@ class BaseHQQModel:
     ############################################
     # This method creates and empty model based on the specfied architecture
     @abstractmethod
-    def create_model(cls, save_dir, kwargs):
+    def create_model(cls, save_dir, **kwargs):
         pass
 
     # This method saves the model architecture only without inculding the weights (for example to a config.json)
@@ -263,7 +263,8 @@ class BaseHQQModel:
         cls.autoname_modules(model)
         cls.set_auto_linear_tags(model)
 
-    # Main function to quantize a model. Basically goes through the linear layers specfied in the patching function and replaces them with HQQLinear
+    # Main function to quantize a model. Basically goes through the linear
+    # layers specfied in the patching function and replaces them with HQQLinear
     @classmethod
     def quantize_model(
         cls,
@@ -280,14 +281,15 @@ class BaseHQQModel:
         # Set linear tags automatically
         cls.setup_model(model)
 
-        if 'budget' in quant_config:
-            budget = quant_config.pop('budget')
-        if 'mixed' in quant_config:
-            mixed = quant_config.pop('mixed')
+        if "budget" in quant_config:
+            budget = quant_config.pop("budget")
+        if "mixed" in quant_config:
+            mixed = quant_config.pop("mixed")
             if mixed:
-                metrics_file = quant_config.pop('quant_metrics_file')
+                metrics_file = quant_config.pop("quant_metrics_file")
                 optimal_configs = find_optimal_configs(
-                    metrics_file, budget, time_limit=120, verbose=True)
+                    metrics_file, budget, time_limit=120, verbose=True
+                )
                 model.optimal_configs = optimal_configs
 
         # Use the same quantization config for all linear layers.
@@ -317,9 +319,8 @@ class BaseHQQModel:
                 "Default model structure not supported. Make sure you feed device as dictionary as {name_block: device}"
             )
 
-        if isinstance(
-            device, dict
-        ):  # input as {module block name (str): device (str or torch.device)}
+        # input as {module block name (str): device (str or torch.device)}
+        if isinstance(device, dict):
             device_map = device
             num_devices = len(set([device_map[k] for k in device_map]))
             all_blocks = list(device_map.keys())
@@ -487,7 +488,7 @@ class BaseHQQModel:
         save_dir = cls.try_snapshot_download(save_dir_or_hub, cache_dir)
 
         # Load model from config
-        model = cls.create_model(save_dir, kwargs)
+        model = cls.create_model(save_dir, **kwargs)
 
         # Track save directory
         model.save_dir = save_dir
