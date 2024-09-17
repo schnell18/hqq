@@ -77,30 +77,46 @@ def compare_weights(model_id):
             print(f"not in ref model: {name}")
 
 
-def create_model_dual(model_id):
-    model = load_quantized(model_id)
-    model = model.half().cuda()
+def create_model_dual(model_id, mask=3):
+    model = None
+    model_ref = None
+    preprocess = None
+
+    if mask & 1:
+        model = load_quantized(model_id)
+        model = model.half().cuda()
 
     # Load reference model to compare with
-    comps = model_id.split("/")
-    elems = comps[1].split("-")
-    model_name = "-".join(elems[1:4])
-    pretrained = "-".join(elems[4:])
-    model_ref, _, preprocess = open_clip.create_model_and_transforms(
-        model_name, pretrained=pretrained
-    )
-    model_ref = model_ref.half().cuda()
+    if mask & 2:
+        comps = model_id.split("/")
+        elems = comps[1].split("-")
+        model_name = "-".join(elems[1:4])
+        pretrained = "-".join(elems[4:])
+        model_ref, _, preprocess = open_clip.create_model_and_transforms(
+            model_name, pretrained=pretrained
+        )
+        model_ref = model_ref.half().cuda()
     return model, model_ref, preprocess
 
 
+def create_and_quant_model(model_id):
+    model = HQQOpenCLIP.create_model(model_id, device="cpu")
+    # Quantize settings
+    # quant_config = BaseQuantizeConfig(nbits=8, group_size=128)
+    quant_config = BaseQuantizeConfig(nbits=4, group_size=64)
+    # quant_config = BaseQuantizeConfig(nbits=3, group_size=64)
+    # quant_config = BaseQuantizeConfig(nbits=2, group_size=16, quant_scale=True)
+    # Quantize
+    model.quantize_model(quant_config=quant_config)
+    model = model.half().cuda()
+    return model
+
+
 def compare(model_id):
-    model, model_ref, preprocess = create_model_dual(model_id)
+    model = create_and_quant_model(model_id)
+    _, model_ref, preprocess = create_model_dual(model_id, mask=2)
     model.eval()
     model_ref.eval()
-
-    # preprocess image and text
-    img = Image.open(os.path.join(data_dir, "astronaut.png")).convert("RGB")
-    img_preprocessed = preprocess(img).cuda().unsqueeze(0)
 
     descriptions = {
         "page": "a page of text about segmentation",
@@ -114,6 +130,10 @@ def compare(model_id):
     }
     texts = descriptions.values()
     text_processed = tokenizer.tokenize(texts).cuda()
+
+    # preprocess image and text
+    img = Image.open(os.path.join(data_dir, "astronaut.png")).convert("RGB")
+    img_preprocessed = preprocess(img).cuda().unsqueeze(0)
 
     with torch.amp.autocast("cuda"):
         img_embedding, text_embedding, _ = model_ref(img_preprocessed, text_processed)
@@ -129,9 +149,9 @@ def compare(model_id):
 def main():
     # quant_models(model_ids)
     # load_quantized(model_ids[0])
-    # compare(model_ids[2])
+    compare(model_ids[2])
     # compare_weights(model_ids[2])
-    compare_weights_raw(model_ids[2])
+    # compare_weights_raw(model_ids[2])
 
 
 if __name__ == "__main__":

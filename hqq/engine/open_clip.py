@@ -100,6 +100,12 @@ class HQQOpenCLIP(HQQWrapper):
         return model
 
     @classmethod
+    def wrap_model(cls, model, model_name):
+        model.arch_key = model_name
+        cls._make_quantizable(model, quantized=False)
+        return model
+
+    @classmethod
     def _get_arch_key_from_save_dir(cls, save_dir: str):
         with open(BaseHQQModel.get_config_file(save_dir), "r") as file:
             config = json.load(file)

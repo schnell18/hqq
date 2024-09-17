@@ -28,7 +28,9 @@ class VitCLIPPatch(BasePatch):
         model.ln_final = patch_fct(model.ln_final)
 
         for i in tqdm(
-            range(len(model.visual.transformer.resblocks)), disable=not verbose
+            range(len(model.visual.transformer.resblocks)),
+            desc="VisionModal-NL",
+            disable=not verbose,
         ):
             model.visual.transformer.resblocks[i].ln_1 = patch_fct(
                 model.visual.transformer.resblocks[i].ln_1
@@ -37,7 +39,11 @@ class VitCLIPPatch(BasePatch):
                 model.visual.transformer.resblocks[i].ln_2
             )
 
-        for i in tqdm(range(len(model.transformer.resblocks)), disable=not verbose):
+        for i in tqdm(
+            range(len(model.transformer.resblocks)),
+            desc="TextModal-NL",
+            disable=not verbose,
+        ):
             model.transformer.resblocks[i].ln_1 = patch_fct(
                 model.transformer.resblocks[i].ln_1
             )
@@ -52,7 +58,7 @@ class VitCLIPPatch(BasePatch):
 
         # patch vision model
         blocks = model.visual.transformer.resblocks
-        for i in tqdm(range(len(blocks)), disable=not verbose):
+        for i in tqdm(range(len(blocks)), desc="VisionModal-L", disable=not verbose):
             # attn_obj = blocks[i].attn
             # for item in attns:
             #     module = f"attn.{item}"
@@ -70,7 +76,7 @@ class VitCLIPPatch(BasePatch):
 
         # patch text model
         blocks = model.transformer.resblocks
-        for i in tqdm(range(len(blocks)), disable=not verbose):
+        for i in tqdm(range(len(blocks)), desc="TextModal-L", disable=not verbose):
             # attn_obj = blocks[i].attn
             # for item in attns:
             #     module = f"attn.{item}"
