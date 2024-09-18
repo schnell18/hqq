@@ -885,7 +885,7 @@ def hqq_base_quant_config(
     view_as_float: bool = False,
     axis: int = 0,
     mixed: bool = False,  # Auto tune nbits and group_size according to weight distribution
-    budget: float = 4.0,  # overall quantization budget as bits per parameter
+    budget: float = 0.0,  # overall quantization budget as bits per parameter
 ):
     assert (
         nbits in Quantizer.SUPPORTED_BITS
