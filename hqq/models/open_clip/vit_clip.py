@@ -71,7 +71,9 @@ class VitCLIPPatch(BasePatch):
             mlp_obj = blocks[i].mlp
             for item in mlps:
                 module = f"mlp.{item}"
-                quant_config = cls.get_optimal_config(model, i, module, patch_params)
+                quant_config = cls.get_optimal_config(
+                    model, i, "vision", module, patch_params
+                )
                 setattr(mlp_obj, item, patch_fct(getattr(mlp_obj, item), quant_config))
 
         # patch text model
@@ -89,19 +91,26 @@ class VitCLIPPatch(BasePatch):
             mlp_obj = blocks[i].mlp
             for item in mlps:
                 module = f"mlp.{item}"
-                quant_config = cls.get_optimal_config(model, i, module, patch_params)
+                quant_config = cls.get_optimal_config(
+                    model, i, "text", module, patch_params
+                )
                 setattr(mlp_obj, item, patch_fct(getattr(mlp_obj, item), quant_config))
 
     @classmethod
     def get_optimal_config(
-        cls, model, layer_no: int, module: str, global_quant_config: dict
+        cls,
+        model,
+        layer_no: int,
+        module_type: str,
+        module: str,
+        global_quant_config: dict,
     ) -> dict:
-        config = global_quant_config[module]
+        config = global_quant_config.get(module, None)
         if config is None:
             return None
         quant_config = copy.deepcopy(config)
         if hasattr(model, "optimal_configs"):
-            opt_tpl = model.optimal_configs[f"{layer_no}.{module}"]
+            opt_tpl = model.optimal_configs[f"{layer_no}.{module_type}.{module}"]
             if opt_tpl:
                 quant_config["weight_quant_params"]["nbits"] = opt_tpl[0]
                 quant_config["weight_quant_params"]["group_size"] = opt_tpl[1]
