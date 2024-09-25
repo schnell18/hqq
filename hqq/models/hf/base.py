@@ -2,6 +2,7 @@
 #####################################################
 import transformers
 from accelerate import init_empty_weights
+
 from ..base import BaseHQQModel, BasePatch
 
 
@@ -13,7 +14,7 @@ class BaseHQQHFModel(BaseHQQModel):
 
     # Create empty model from config
     @classmethod
-    def create_model(cls, save_dir, kwargs):
+    def create_model(cls, save_dir, **kwargs):
         config_kwargs = {}
         for key in ["attn_implementation"]:
             if key in kwargs:
