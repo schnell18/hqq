@@ -262,7 +262,7 @@ class BaseHQQModel:
             mixed = quant_config.pop("mixed")
             if mixed:
                 metrics_file = quant_config.pop("quant_metrics_file")
-                optimal_configs = find_optimal_configs(
+                optimal_configs, _ = find_optimal_configs(
                     metrics_file, budget, time_limit=120, verbose=True
                 )
                 model.optimal_configs = optimal_configs
