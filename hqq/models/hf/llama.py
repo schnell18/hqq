@@ -79,6 +79,9 @@ class LLamaPatch(BasePatch):
             if opt_tpl:
                 quant_config["weight_quant_params"]["nbits"] = opt_tpl[0]
                 quant_config["weight_quant_params"]["group_size"] = opt_tpl[1]
+                quant_config["weight_quant_params"]["round_zero"] = (
+                    True if opt_tpl[0] == 4 else False
+                )
         return quant_config
 
 
