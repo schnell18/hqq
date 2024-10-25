@@ -37,8 +37,9 @@ def load_precomputed_metrics(
     fp: str,
 ) -> Tuple[int, np.ndarray, np.ndarray, pd.MultiIndex, pd.MultiIndex]:
     df = pd.read_csv(fp)
+    df["weighted_fnorm"] = df["fnorm"] * df["kurtosis"] / 3
     df_fnorm = df.pivot_table(
-        values="fnorm",
+        values="weighted_fnorm",
         index=["layer", "module"],
         columns=["nbit1", "gsize1", "nbit2", "gsize2"],
     )
