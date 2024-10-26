@@ -18,7 +18,7 @@ def find_optimal_configs(
         model_metric_fp
     )
     # convert bit per paramter to total mega bytes
-    budget_mb = (100 + torelance_pct) / 100 * total_params * budget / 8 / 1024 / 1024
+    budget_mb = (100 + torelance_pct) / 100 * total_params * budget / 8 / 1024**2
     optimizer_opts = {"disp": verbose, "time_limit": time_limit}
     result = mip_solve(budget_mb, costs, mems, optimizer_opts)
     if result.success:
@@ -37,7 +37,10 @@ def load_precomputed_metrics(
     fp: str,
 ) -> Tuple[int, np.ndarray, np.ndarray, pd.MultiIndex, pd.MultiIndex]:
     df = pd.read_csv(fp)
-    df["weighted_fnorm"] = df["fnorm"] * df["kurtosis"] / 3
+    # apply global kurtosis weight to fnorm cost
+    # df["weighted_fnorm"] = df["fnorm"] * df["kurtosis"] / 3
+    # apply local(module-scoped) kurtosis weight to fnorm cost
+    df["weighted_fnorm"] = df["fnorm"] * (1 + df["kurtosis_scaled"])
     df_fnorm = df.pivot_table(
         values="weighted_fnorm",
         index=["layer", "module"],
