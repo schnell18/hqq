@@ -11,7 +11,7 @@ def find_optimal_configs(
     model_metric_fp: str,
     budget: float,
     time_limit=10,
-    torelance_pct: int = 0,
+    torelance_pct: int = 5,
     verbose: bool = False,
 ) -> Dict:
     total_params, costs, mems, row_mapper, column_mapper = load_precomputed_metrics(
@@ -40,9 +40,9 @@ def load_precomputed_metrics(
     # apply global kurtosis weight to fnorm cost
     # df["weighted_fnorm"] = df["fnorm"] * df["kurtosis"] / 3
     # apply local(module-scoped) kurtosis weight to fnorm cost
-    df["weighted_fnorm"] = df["fnorm"] * (1 + df["kurtosis_scaled"])
+    # df["weighted_fnorm"] = df["fnorm"] * (1 + df["kurtosis_scaled"])
     df_fnorm = df.pivot_table(
-        values="weighted_fnorm",
+        values="fnorm",
         index=["layer", "module"],
         columns=["nbit1", "gsize1", "nbit2", "gsize2"],
     )
