@@ -13,9 +13,10 @@ def find_optimal_configs(
     time_limit=10,
     torelance_pct: int = 0,
     verbose: bool = False,
+    weight_algo: str = None,
 ) -> Dict:
     total_params, costs, mems, row_mapper, column_mapper = load_precomputed_metrics(
-        model_metric_fp
+        model_metric_fp, weight_algo
     )
     # convert bit per paramter to total mega bytes
     budget_mb = (100 + torelance_pct) / 100 * total_params * budget / 8 / 1024**2
@@ -35,17 +36,24 @@ def find_optimal_configs(
 
 def load_precomputed_metrics(
     fp: str,
+    weight_algo: str = None,
 ) -> Tuple[int, np.ndarray, np.ndarray, pd.MultiIndex, pd.MultiIndex]:
     df = pd.read_csv(fp)
-    # apply global kurtosis weight to fnorm cost
-    # df["weighted_fnorm"] = df["fnorm"] * df["kurtosis"] / 3
-    # apply local(module-scoped) kurtosis weight to fnorm cost
-    df["weighted_fnorm"] = df["fnorm"] * (1 + df["kurtosis_scaled"])
-    df_fnorm = df.pivot_table(
-        values="weighted_fnorm",
-        index=["layer", "module"],
-        columns=["nbit1", "gsize1", "nbit2", "gsize2"],
-    )
+    if weight_algo == "kurt-scaled":
+        # apply local(module-scoped) kurtosis weight to fnorm cost
+        df["weighted_fnorm"] = df["fnorm"] * (1 + df["kurtosis_scaled"])
+        df_fnorm = df.pivot_table(
+            values="weighted_fnorm",
+            index=["layer", "module"],
+            columns=["nbit1", "gsize1", "nbit2", "gsize2"],
+        )
+    else:
+        df_fnorm = df.pivot_table(
+            values="fnorm",
+            index=["layer", "module"],
+            columns=["nbit1", "gsize1", "nbit2", "gsize2"],
+        )
+
     df_memgb = df.pivot_table(
         values="memmb",
         index=["layer", "module"],
