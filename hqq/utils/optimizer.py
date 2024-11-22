@@ -1,3 +1,4 @@
+from functools import partial
 from typing import Dict, Optional, Tuple
 
 import numpy as np
@@ -13,10 +14,84 @@ def find_optimal_configs(
     time_limit=10,
     torelance_pct: int = 0,
     verbose: bool = False,
-    weight_algo: str = None,
+    **kwargs,
+) -> Dict:
+    weight_algo = kwargs.get("weight_algo", None)
+    boost_layers = kwargs.get("boost_layers", [])
+    decline_layers = kwargs.get("decline_layers", [])
+    if weight_algo == "sensitivity":
+        cfgs = _allocate_boost_decline_configs(
+            model_metric_fp, budget, boost_layers, decline_layers
+        )
+        if cfgs:
+            return cfgs
+
+    return _find_optimal_configs_milp(
+        model_metric_fp,
+        budget,
+        time_limit,
+        torelance_pct,
+        verbose,
+        **kwargs,
+    )
+
+
+def _allocate_boost_decline_configs(fp: str, budget, boost_layers, decline_layers):
+    budget_map = {
+        8.51: (8, 32),
+        8.25: (8, 64),
+        8.13: (8, 128),
+        4.51: (4, 32),
+        4.25: (4, 64),
+        4.13: (4, 128),
+        3.51: (3, 32),
+        3.25: (3, 64),
+        3.13: (3, 128),
+        2.51: (2, 32),
+        2.25: (2, 64),
+        2.13: (2, 128),
+    }
+    if budget not in budget_map:
+        return None
+
+    def boost_cfg(budget, factor):
+        sort_budgets = sorted(budget_map.keys())
+        idx = sort_budgets.index(budget)
+        if factor > 0:
+            idx = min(idx + 1, len(sort_budgets) - 1)
+        else:
+            idx = max(idx - 1, 0)
+        return budget_map[sort_budgets[idx]]
+
+    df = pd.read_csv(fp)
+    max_layer = df["layer"].unique().max()
+    modules = df["module"].unique()
+    b1, g1 = budget_map[budget]
+    b2, g2 = 8, 128
+    b1_boost, g1_boost = boost_cfg(budget, 1)
+    b1_decline, g1_decline = boost_cfg(budget, -1)
+    cfgs = {}
+    for layer in range(0, max_layer + 1):
+        for module in modules:
+            if layer in boost_layers:
+                cfgs[f"{layer}.{module}"] = (b1_boost, g1_boost, b2, g2)
+            elif layer in decline_layers:
+                cfgs[f"{layer}.{module}"] = (b1_decline, g1_decline, b2, g2)
+            else:
+                cfgs[f"{layer}.{module}"] = (b1, g1, b2, g2)
+    return cfgs, 0
+
+
+def _find_optimal_configs_milp(
+    model_metric_fp: str,
+    budget: float,
+    time_limit=10,
+    torelance_pct: int = 0,
+    verbose: bool = False,
+    **kwargs,
 ) -> Dict:
     total_params, costs, mems, row_mapper, column_mapper = load_precomputed_metrics(
-        model_metric_fp, weight_algo
+        model_metric_fp, **kwargs
     )
     # convert bit per paramter to total mega bytes
     budget_mb = (100 + torelance_pct) / 100 * total_params * budget / 8 / 1024**2
@@ -35,13 +110,34 @@ def find_optimal_configs(
 
 
 def load_precomputed_metrics(
-    fp: str,
-    weight_algo: str = None,
+    fp: str, **kwargs
 ) -> Tuple[int, np.ndarray, np.ndarray, pd.MultiIndex, pd.MultiIndex]:
     df = pd.read_csv(fp)
+    weight_algo = kwargs.get("weight_algo", None)
     if weight_algo == "kurt-scaled":
         # apply local(module-scoped) kurtosis weight to fnorm cost
         df["weighted_fnorm"] = df["fnorm"] * (1 + df["kurtosis_scaled"])
+        df_fnorm = df.pivot_table(
+            values="weighted_fnorm",
+            index=["layer", "module"],
+            columns=["nbit1", "gsize1", "nbit2", "gsize2"],
+        )
+    elif weight_algo == "head-prioritized":
+        # apply additional weight to the start layers
+        factor = kwargs.get("factor", 1.1)
+        first_layer_prioritized = partial(prioritize, layer=0, factor=factor)
+        df = df.apply(first_layer_prioritized, axis=1)
+        df_fnorm = df.pivot_table(
+            values="weighted_fnorm",
+            index=["layer", "module"],
+            columns=["nbit1", "gsize1", "nbit2", "gsize2"],
+        )
+    elif weight_algo == "tail-prioritized":
+        # apply additional weight to the start layers
+        factor = kwargs.get("factor", 1.1)
+        last_layer = df["layer"].max()
+        last_layer_prioritized = partial(prioritize, layer=last_layer, factor=factor)
+        df = df.apply(last_layer_prioritized, axis=1)
         df_fnorm = df.pivot_table(
             values="weighted_fnorm",
             index=["layer", "module"],
@@ -94,3 +190,8 @@ def mip_solve(
         bounds=Bounds(0, 1),
         options=opts,
     )
+
+
+def prioritize(row, layer=0, factor=1.1):
+    row["weighted_fnorm"] = row["fnorm"] * (1 if row["layer"] != layer else factor)
+    return row

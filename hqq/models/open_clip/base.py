@@ -67,12 +67,15 @@ class BaseHQQOpenCLIPModel(BaseHQQModel):
             if mixed:
                 metrics_file = quant_config.pop("quant_metrics_file")
                 weight_algo = quant_config.pop("weight_algo", None)
+                boost_layers = quant_config.pop("boost_layers", None)
+                decline_layers = quant_config.pop("decline_layers", None)
+                kwargs = {
+                    "weight_algo": weight_algo,
+                    "boost_layers": boost_layers,
+                    "decline_layers": decline_layers,
+                }
                 optimal_configs, _ = find_optimal_configs(
-                    metrics_file,
-                    budget,
-                    time_limit=200,
-                    verbose=True,
-                    weight_algo=weight_algo,
+                    metrics_file, budget, time_limit=200, verbose=True, **kwargs
                 )
                 model.optimal_configs = optimal_configs
 
