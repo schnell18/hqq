@@ -17,11 +17,20 @@ def find_optimal_configs(
     **kwargs,
 ) -> Dict:
     weight_algo = kwargs.get("weight_algo", None)
-    boost_layers = kwargs.get("boost_layers", [])
-    decline_layers = kwargs.get("decline_layers", [])
+    boost_layers = kwargs.get("boost_layers", None)
+    decline_layers = kwargs.get("decline_layers", None)
+    boost_layers = boost_layers if boost_layers else []
+    decline_layers = decline_layers if decline_layers else []
+    boost_stop = kwargs.get("boost_stop", 1)
+    decline_stop = kwargs.get("decline_stop", -1)
     if weight_algo == "sensitivity":
         cfgs = _allocate_boost_decline_configs(
-            model_metric_fp, budget, boost_layers, decline_layers
+            model_metric_fp,
+            budget,
+            boost_layers,
+            decline_layers,
+            boost_stop,
+            decline_stop,
         )
         if cfgs:
             return cfgs
@@ -36,7 +45,14 @@ def find_optimal_configs(
     )
 
 
-def _allocate_boost_decline_configs(fp: str, budget, boost_layers, decline_layers):
+def _allocate_boost_decline_configs(
+    fp: str,
+    budget,
+    boost_layers,
+    decline_layers,
+    boost_stop=1,
+    decline_stop=-1,
+):
     budget_map = {
         8.51: (8, 32),
         8.25: (8, 64),
@@ -54,13 +70,14 @@ def _allocate_boost_decline_configs(fp: str, budget, boost_layers, decline_layer
     if budget not in budget_map:
         return None
 
-    def boost_cfg(budget, factor):
+    def boost_cfg(budget, stop):
         sort_budgets = sorted(budget_map.keys())
         idx = sort_budgets.index(budget)
-        if factor > 0:
-            idx = min(idx + 1, len(sort_budgets) - 1)
-        else:
-            idx = max(idx - 1, 0)
+        idx = idx + stop
+        if idx < 0:
+            idx = 0
+        elif idx >= len(sort_budgets):
+            idx = len(sort_budgets)
         return budget_map[sort_budgets[idx]]
 
     df = pd.read_csv(fp)
@@ -68,8 +85,10 @@ def _allocate_boost_decline_configs(fp: str, budget, boost_layers, decline_layer
     modules = df["module"].unique()
     b1, g1 = budget_map[budget]
     b2, g2 = 8, 128
-    b1_boost, g1_boost = boost_cfg(budget, 1)
-    b1_decline, g1_decline = boost_cfg(budget, -1)
+    boost_stop = 1 if not boost_stop else boost_stop
+    decline_stop = 1 if not decline_stop else decline_stop
+    b1_boost, g1_boost = boost_cfg(budget, boost_stop)
+    b1_decline, g1_decline = boost_cfg(budget, decline_stop)
     cfgs = {}
     for layer in range(0, max_layer + 1):
         for module in modules:
