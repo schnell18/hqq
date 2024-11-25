@@ -23,7 +23,7 @@ def find_optimal_configs(
     decline_layers = decline_layers if decline_layers else []
     boost_stop = kwargs.get("boost_stop", 1)
     decline_stop = kwargs.get("decline_stop", -1)
-    if weight_algo == "sensitivity":
+    if weight_algo == "sensi-directive":
         cfgs = _allocate_boost_decline_configs(
             model_metric_fp,
             budget,
@@ -159,6 +159,12 @@ def load_precomputed_metrics(
         df = df.apply(last_layer_prioritized, axis=1)
         df_fnorm = df.pivot_table(
             values="weighted_fnorm",
+            index=["layer", "module"],
+            columns=["nbit1", "gsize1", "nbit2", "gsize2"],
+        )
+    elif weight_algo == "sensi-milp":
+        df_fnorm = df.pivot_table(
+            values="sensitivity",
             index=["layer", "module"],
             columns=["nbit1", "gsize1", "nbit2", "gsize2"],
         )
