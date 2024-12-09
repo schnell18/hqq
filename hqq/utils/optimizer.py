@@ -163,8 +163,18 @@ def load_precomputed_metrics(
             columns=["nbit1", "gsize1", "nbit2", "gsize2"],
         )
     elif weight_algo == "sensi-milp":
+        df["weighted_fnorm"] = (
+            df["sensitivity"]
+            / (
+                df["nbit1"]
+                + 2 * df["nbit2"] / df["gsize1"]
+                + 32 / df["gsize1"] / df["gsize2"]
+            )
+            / df["memmb"]
+        )
+
         df_fnorm = df.pivot_table(
-            values="sensitivity",
+            values="weighted_fnorm",
             index=["layer", "module"],
             columns=["nbit1", "gsize1", "nbit2", "gsize2"],
         )
