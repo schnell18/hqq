@@ -163,8 +163,16 @@ def load_precomputed_metrics(
             columns=["nbit1", "gsize1", "nbit2", "gsize2"],
         )
     elif weight_algo == "sensi-milp":
+        flds = ["module", "nbit1", "gsize1", "nbit2", "gsize2"]
+        df_mean = (
+            df.groupby(flds)
+            .agg(fnorm_mean=pd.NamedAgg(column="fnorm", aggfunc="mean"))
+            .reset_index()
+        )
+        df = df.merge(df_mean, how="inner", on=flds)
+        df["weighted_fnorm"] = df["fnorm_mean"] * df["sensitivity"]
         df_fnorm = df.pivot_table(
-            values="sensitivity",
+            values="weighted_fnorm",
             index=["layer", "module"],
             columns=["nbit1", "gsize1", "nbit2", "gsize2"],
         )
