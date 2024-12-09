@@ -163,7 +163,8 @@ def load_precomputed_metrics(
             columns=["nbit1", "gsize1", "nbit2", "gsize2"],
         )
     elif weight_algo == "sensi-milp":
-        flds = ["module", "nbit1", "gsize1", "nbit2", "gsize2"]
+        # flds = ["module", "nbit1", "gsize1", "nbit2", "gsize2"]
+        flds = ["nbit1", "gsize1", "nbit2", "gsize2"]
         df_mean = (
             df.groupby(flds)
             .agg(fnorm_mean=pd.NamedAgg(column="fnorm", aggfunc="mean"))
