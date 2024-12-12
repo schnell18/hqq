@@ -171,7 +171,9 @@ class Quantizer:
                 ]
         else:
             W_r = W_q.to(compute_dtype)
-        W_r = ((W_r - meta["zero"]) * meta["scale"]).reshape(meta["shape"])
+        zero = meta["zero"].to(compute_dtype)
+        scale = meta["scale"].to(compute_dtype)
+        W_r = ((W_r - zero) * scale).reshape(meta["shape"])
         return W_r
 
     @classmethod

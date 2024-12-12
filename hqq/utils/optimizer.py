@@ -170,7 +170,7 @@ def load_precomputed_metrics(
                 + 2 * df["nbit2"] / df["gsize1"]
                 + 32 / df["gsize1"] / df["gsize2"]
             )
-            / df["memmb"]
+            * df["memmb"]
         )
 
         df_fnorm = df.pivot_table(
