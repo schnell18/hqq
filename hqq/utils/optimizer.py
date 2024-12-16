@@ -135,19 +135,14 @@ def load_precomputed_metrics(
     weight_algo = kwargs.get("weight_algo", None)
     if weight_algo == "kurt-scaled":
         # apply local(module-scoped) kurtosis weight to fnorm cost
-        df["weighted_fnorm"] = df["fnorm"] * (1 + df["kurtosis_scaled"])
-        df_fnorm = df.pivot_table(
-            values="weighted_fnorm",
-            index=["layer", "module"],
-            columns=["nbit1", "gsize1", "nbit2", "gsize2"],
-        )
+        df["cost"] = df["fnorm"] * (1 + df["kurtosis_scaled"])
     elif weight_algo == "head-prioritized":
         # apply additional weight to the start layers
         factor = kwargs.get("factor", 1.1)
         first_layer_prioritized = partial(prioritize, layer=0, factor=factor)
         df = df.apply(first_layer_prioritized, axis=1)
         df_fnorm = df.pivot_table(
-            values="weighted_fnorm",
+            values="cost",
             index=["layer", "module"],
             columns=["nbit1", "gsize1", "nbit2", "gsize2"],
         )
@@ -157,33 +152,56 @@ def load_precomputed_metrics(
         last_layer = df["layer"].max()
         last_layer_prioritized = partial(prioritize, layer=last_layer, factor=factor)
         df = df.apply(last_layer_prioritized, axis=1)
-        df_fnorm = df.pivot_table(
-            values="weighted_fnorm",
-            index=["layer", "module"],
-            columns=["nbit1", "gsize1", "nbit2", "gsize2"],
-        )
     elif weight_algo == "sensi-milp":
-        df["weighted_fnorm"] = (
-            df["sensitivity"]
+        factor = kwargs.get("factor", 2)
+        func = gen_cost_factor_func(df, factor, "sensitivity", "cost_sensi")
+        df = df.apply(func, axis=1)
+        df["cost"] = (
+            df["cost_sensi"]
             / (
                 df["nbit1"]
                 + 2 * df["nbit2"] / df["gsize1"]
                 + 32 / df["gsize1"] / df["gsize2"]
             )
-            * df["memmb"]
+            * 100
+            * 12
+            * df["params"]
+            / df["params"].sum()
         )
-
-        df_fnorm = df.pivot_table(
-            values="weighted_fnorm",
-            index=["layer", "module"],
-            columns=["nbit1", "gsize1", "nbit2", "gsize2"],
+    elif weight_algo == "kurtosis-milp":
+        factor = kwargs.get("factor", 2)
+        # min-max scaling
+        df_kurt_agg = df.groupby("module").agg(
+            kurt_max=pd.NamedAgg(column="kurtosis", aggfunc="max"),
+            kurt_min=pd.NamedAgg(column="kurtosis", aggfunc="min"),
+        )
+        df = df.merge(df_kurt_agg, how="left", on="module")
+        df["kurtosis_scaled"] = (df["kurtosis"] - df["kurt_min"]) / (
+            df["kurt_max"] - df["kurt_min"]
+        )
+        # use zscore to isolate kurtosis outliers
+        func = gen_cost_factor_func(df, factor, "kurtosis_scaled", "cost_kurt")
+        df = df.apply(func, axis=1)
+        df["cost"] = (
+            df["cost_kurt"]
+            / (
+                df["nbit1"]
+                + 2 * df["nbit2"] / df["gsize1"]
+                + 32 / df["gsize1"] / df["gsize2"]
+            )
+            * 100
+            * 12
+            * df["params"]
+            / df["params"].sum()
         )
     else:
-        df_fnorm = df.pivot_table(
-            values="fnorm",
-            index=["layer", "module"],
-            columns=["nbit1", "gsize1", "nbit2", "gsize2"],
-        )
+        df_fnorm["cost"] = df_fnorm["fnorm"]
+
+    df_fnorm = df.pivot_table(
+        values="cost",
+        index=["layer", "module"],
+        columns=["nbit1", "gsize1", "nbit2", "gsize2"],
+    )
 
     df_memgb = df.pivot_table(
         values="memmb",
@@ -228,5 +246,17 @@ def mip_solve(
 
 
 def prioritize(row, layer=0, factor=1.1):
-    row["weighted_fnorm"] = row["fnorm"] * (1 if row["layer"] != layer else factor)
+    row["cost"] = row["fnorm"] * (1 if row["layer"] != layer else factor)
     return row
+
+
+def gen_cost_factor_func(df, factor, src, dest):
+    # use zscore to isolate kurtosis outliers
+    sigma = df[src].std()
+    mu = df[src].mean()
+
+    def _set_cost_factor(row):
+        row[dest] = factor if abs(row[src] - mu) / sigma > 3 else 1
+        return row
+
+    return _set_cost_factor

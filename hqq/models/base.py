@@ -267,12 +267,14 @@ class BaseHQQModel:
                 decline_layers = quant_config.pop("decline_layers", None)
                 boost_stop = quant_config.pop("boost_stop", None)
                 decline_stop = quant_config.pop("decline_stop", None)
+                factor = quant_config.pop("factor", None)
                 kwargs = {
                     "weight_algo": weight_algo,
                     "boost_layers": boost_layers,
                     "decline_layers": decline_layers,
                     "boost_stop": boost_stop,
                     "decline_stop": decline_stop,
+                    "factor": factor,
                 }
                 optimal_configs, _ = find_optimal_configs(
                     metrics_file, budget, time_limit=120, verbose=True, **kwargs
