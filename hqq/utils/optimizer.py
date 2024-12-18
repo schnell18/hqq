@@ -154,20 +154,8 @@ def load_precomputed_metrics(
         df = df.apply(last_layer_prioritized, axis=1)
     elif weight_algo == "sensi-milp":
         factor = kwargs.get("factor", 2)
-        func = gen_cost_factor_func(df, factor, "sensitivity", "cost_sensi")
+        func = gen_cost_factor_func(df, factor, "sensitivity", "cost")
         df = df.apply(func, axis=1)
-        df["cost"] = (
-            df["cost_sensi"]
-            / (
-                df["nbit1"]
-                + 2 * df["nbit2"] / df["gsize1"]
-                + 32 / df["gsize1"] / df["gsize2"]
-            )
-            * 100
-            * 12
-            * df["params"]
-            / df["params"].sum()
-        )
     elif weight_algo == "kurtosis-milp":
         factor = kwargs.get("factor", 2)
         # min-max scaling
@@ -180,20 +168,8 @@ def load_precomputed_metrics(
             df["kurt_max"] - df["kurt_min"]
         )
         # use zscore to isolate kurtosis outliers
-        func = gen_cost_factor_func(df, factor, "kurtosis_scaled", "cost_kurt")
+        func = gen_cost_factor_func(df, factor, "kurtosis_scaled", "cost")
         df = df.apply(func, axis=1)
-        df["cost"] = (
-            df["cost_kurt"]
-            / (
-                df["nbit1"]
-                + 2 * df["nbit2"] / df["gsize1"]
-                + 32 / df["gsize1"] / df["gsize2"]
-            )
-            * 100
-            * 12
-            * df["params"]
-            / df["params"].sum()
-        )
     else:
         df_fnorm["cost"] = df_fnorm["fnorm"]
 
@@ -251,12 +227,22 @@ def prioritize(row, layer=0, factor=1.1):
 
 
 def gen_cost_factor_func(df, factor, src, dest):
-    # use zscore to isolate kurtosis outliers
+    # use zscore to isolate outliers
     sigma = df[src].std()
     mu = df[src].mean()
+    tot_params = df["params"].sum() / 12
+    bits = [2, 3, 4, 8]
+    groups = [128, 64, 32]
 
     def _set_cost_factor(row):
-        row[dest] = factor if abs(row[src] - mu) / sigma > 3 else 1
+        b1 = row["nbit1"]
+        g1 = row["gsize1"]
+        p = row["params"]
+
+        b = bits.index(b1) + 1
+        g = groups.index(g1) + 1
+        cost_factor = 70 if abs(row[src] - mu) / sigma > 3 else 1
+        row[dest] = cost_factor * 2 / (3 * (b - 1) + g) * 100 * (p / tot_params)
         return row
 
     return _set_cost_factor
