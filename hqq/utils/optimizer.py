@@ -6,6 +6,7 @@ import pandas as pd
 import torch
 from scipy.optimize import Bounds, LinearConstraint, OptimizeResult
 from scipy.optimize import milp as scipy_milp
+from scipy.stats.mstats import trimmed_mean, trimmed_std
 
 
 def find_optimal_configs(
@@ -227,22 +228,35 @@ def prioritize(row, layer=0, factor=1.1):
 
 
 def gen_cost_factor_func(df, factor, src, dest):
-    # use zscore to isolate outliers
-    sigma = df[src].std()
-    mu = df[src].mean()
     tot_params = df["params"].sum() / 12
-    bits = [2, 3, 4, 8]
-    groups = [128, 64, 32]
+
+    module_outliers = {}
+    modules = df["module"].unique()
+    for module in modules:
+        # choose b8g64 as example since sensitivity metrics
+        # are identical across bit-groups
+        df_s = df.query(f"nbit1 == 8 and gsize1 == 64 and module == '{module}'")
+        sensi = df_s[src].to_numpy()
+        a = []
+        for i in range(len(sensi) - 1):
+            a.append(sensi[i + 1] / sensi[i])
+        diff = np.array(a)
+        # trimm 10% value to exclude outliers
+        mu = trimmed_mean(diff, limits=(0.05, 0.05))
+        sigma = trimmed_std(diff, limits=(0.05, 0.05), ddof=1)
+        # use zscore to isolate outliers
+        zscore = np.abs(diff - mu) / sigma
+        module_outliers[module] = [i + 1 for i in np.where(zscore > 3)[0]]
 
     def _set_cost_factor(row):
-        b1 = row["nbit1"]
-        g1 = row["gsize1"]
-        p = row["params"]
+        b1, g1 = row["nbit1"], row["gsize1"]
+        b2, g2 = row["nbit2"], row["gsize2"]
+        p, mod, layer = row["params"], row["module"], row["layer"]
 
-        b = bits.index(b1) + 1
-        g = groups.index(g1) + 1
-        cost_factor = 70 if abs(row[src] - mu) / sigma > 3 else 1
-        row[dest] = cost_factor * 2 / (3 * (b - 1) + g) * 100 * (p / tot_params)
+        bpp = b1 + 2 * b2 / g1 + 32 / g1 / g2
+        cost_factor = factor if layer in module_outliers[mod] else 1
+        low_bit_penalty = 2 if b1 <= 3 else 1
+        row[dest] = low_bit_penalty * cost_factor / bpp * 100 * (p / tot_params)
         return row
 
     return _set_cost_factor
