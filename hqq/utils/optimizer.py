@@ -235,7 +235,7 @@ def gen_cost_factor_func(df, factor, src, dest):
     for module in modules:
         # choose b8g64 as example since sensitivity metrics
         # are identical across bit-groups
-        df_s = df.query(f"nbit1 == 8 and gsize1 == 64 and module == '{module}'")
+        df_s = df.query(f"nbit1 == 4 and gsize1 == 64 and module == '{module}'")
         sensi = df_s[src].to_numpy()
         a = []
         for i in range(len(sensi) - 1):
@@ -247,6 +247,8 @@ def gen_cost_factor_func(df, factor, src, dest):
         # use zscore to isolate outliers
         zscore = np.abs(diff - mu) / sigma
         module_outliers[module] = [i + 1 for i in np.where(zscore > 3)[0]]
+        # TODO: for trouble shooting
+        module_outliers[module] = []
 
     def _set_cost_factor(row):
         b1, g1 = row["nbit1"], row["gsize1"]
@@ -255,7 +257,7 @@ def gen_cost_factor_func(df, factor, src, dest):
 
         bpp = b1 + 2 * b2 / g1 + 32 / g1 / g2
         cost_factor = factor if layer in module_outliers[mod] else 1
-        low_bit_penalty = 2 if b1 <= 3 else 1
+        low_bit_penalty = 3 if b1 < 3 else 2 if b1 < 4 else 1
         row[dest] = low_bit_penalty * cost_factor / bpp * 100 * (p / tot_params)
         return row
 
