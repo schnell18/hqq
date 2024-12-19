@@ -227,7 +227,9 @@ def prioritize(row, layer=0, factor=1.1):
     return row
 
 
-def gen_cost_factor_func(df, factor, src, dest):
+def gen_cost_factor_func(
+    df, factor, src, dest, diff_method="divide", sensitive_modules=2
+):
     tot_params = df["params"].sum() / 12
 
     module_outliers = {}
@@ -237,18 +239,27 @@ def gen_cost_factor_func(df, factor, src, dest):
         # are identical across bit-groups
         df_s = df.query(f"nbit1 == 4 and gsize1 == 64 and module == '{module}'")
         sensi = df_s[src].to_numpy()
-        a = []
-        for i in range(len(sensi) - 1):
-            a.append(sensi[i + 1] / sensi[i])
-        diff = np.array(a)
+        if diff_method == "divide":
+            a = []
+            for i in range(len(sensi) - 1):
+                a.append(sensi[i + 1] / sensi[i])
+            diff = np.array(a)
+        else:
+            diff = np.diff(sensi)
+
         # trimm 10% value to exclude outliers
         mu = trimmed_mean(diff, limits=(0.05, 0.05))
         sigma = trimmed_std(diff, limits=(0.05, 0.05), ddof=1)
         # use zscore to isolate outliers
         zscore = np.abs(diff - mu) / sigma
-        module_outliers[module] = [i + 1 for i in np.where(zscore > 3)[0]]
-        # TODO: for trouble shooting
-        module_outliers[module] = []
+        outliers = sorted(
+            zip(zscore[zscore > 3], np.where(zscore > 3)[0]), key=lambda ot: -ot[0]
+        )
+
+        # keep top n outliers
+        if len(outliers) > sensitive_modules:
+            outliers = outliers[0:sensitive_modules]
+        module_outliers[module] = [ot[1] + 1 for ot in outliers]
 
     def _set_cost_factor(row):
         b1, g1 = row["nbit1"], row["gsize1"]
@@ -257,7 +268,7 @@ def gen_cost_factor_func(df, factor, src, dest):
 
         bpp = b1 + 2 * b2 / g1 + 32 / g1 / g2
         cost_factor = factor if layer in module_outliers[mod] else 1
-        low_bit_penalty = 3 if b1 < 3 else 2 if b1 < 4 else 1
+        low_bit_penalty = 4 if b1 < 3 else 2 if b1 < 4 else 1
         row[dest] = low_bit_penalty * cost_factor / bpp * 100 * (p / tot_params)
         return row
 
