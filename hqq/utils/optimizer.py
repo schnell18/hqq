@@ -25,29 +25,44 @@ def find_optimal_configs(
     boost_stop = kwargs.get("boost_stop", 1)
     decline_stop = kwargs.get("decline_stop", -1)
     if weight_algo == "sensi-directive":
-        cfgs = _allocate_boost_decline_configs(
-            model_metric_fp,
+        df = pd.read_csv(model_metric_fp)
+        max_layer = df["layer"].unique().max()
+        modules = df["module"].unique()
+        boost_mods = {mod: boost_layers for mod in modules}
+        decline_mods = {mod: decline_layers for mod in modules}
+        return _allocate_boost_decline_configs(
+            modules,
+            max_layer,
             budget,
-            boost_layers,
-            decline_layers,
+            boost_mods,
             boost_stop,
+            decline_mods,
             decline_stop,
         )
-        if cfgs:
-            return cfgs
-
-    return _find_optimal_configs_milp(
-        model_metric_fp,
-        budget,
-        time_limit,
-        torelance_pct,
-        verbose,
-        **kwargs,
-    )
+    elif weight_algo == "sensi-boost":
+        df = pd.read_csv(model_metric_fp)
+        max_layer = df["layer"].unique().max()
+        modules = df["module"].unique()
+        boost_mods = {mod: boost_layers for mod in modules}
+        module_outliers = identify_sensitive_modules(df, 2, "sensitivity")
+        boost_mods.update(module_outliers)
+        return _allocate_boost_decline_configs(
+            modules, max_layer, budget, boost_mods, None, boost_stop
+        )
+    else:
+        return _find_optimal_configs_milp(
+            model_metric_fp,
+            budget,
+            time_limit,
+            torelance_pct,
+            verbose,
+            **kwargs,
+        )
 
 
 def _allocate_boost_decline_configs(
-    fp: str,
+    modules,
+    max_layer,
     budget,
     boost_layers,
     decline_layers,
@@ -81,9 +96,6 @@ def _allocate_boost_decline_configs(
             idx = len(sort_budgets)
         return budget_map[sort_budgets[idx]]
 
-    df = pd.read_csv(fp)
-    max_layer = df["layer"].unique().max()
-    modules = df["module"].unique()
     b1, g1 = budget_map[budget]
     b2, g2 = 8, 128
     boost_stop = 1 if not boost_stop else boost_stop
@@ -93,9 +105,17 @@ def _allocate_boost_decline_configs(
     cfgs = {}
     for layer in range(0, max_layer + 1):
         for module in modules:
-            if layer in boost_layers:
+            if (
+                boost_layers
+                and module in boost_layers
+                and layer in boost_layers[module]
+            ):
                 cfgs[f"{layer}.{module}"] = (b1_boost, g1_boost, b2, g2)
-            elif layer in decline_layers:
+            elif (
+                decline_layers
+                and module in decline_layers
+                and layer in decline_layers[module]
+            ):
                 cfgs[f"{layer}.{module}"] = (b1_decline, g1_decline, b2, g2)
             else:
                 cfgs[f"{layer}.{module}"] = (b1, g1, b2, g2)
@@ -231,7 +251,27 @@ def gen_cost_factor_func(
     df, factor, src, dest, diff_method="divide", sensitive_modules=1
 ):
     tot_params = df["params"].sum() / 12
+    module_outliers = identify_sensitive_modules(
+        df, factor, src, diff_method="divide", sensitive_modules=1
+    )
 
+    def _set_cost_factor(row):
+        b1, g1 = row["nbit1"], row["gsize1"]
+        b2, g2 = row["nbit2"], row["gsize2"]
+        p, mod, layer = row["params"], row["module"], row["layer"]
+
+        bpp = b1 + 2 * b2 / g1 + 32 / g1 / g2
+        cost_factor = factor if layer in module_outliers[mod] else 1
+        low_bit_penalty = 4 if b1 < 3 else 2 if b1 < 4 else 1
+        row[dest] = low_bit_penalty * cost_factor / bpp * 100 * (p / tot_params)
+        return row
+
+    return _set_cost_factor
+
+
+def identify_sensitive_modules(
+    df, factor, src, diff_method="divide", sensitive_modules=1
+):
     module_outliers = {}
     modules = df["module"].unique()
     for module in modules:
@@ -246,7 +286,6 @@ def gen_cost_factor_func(
             diff = np.array(a)
         else:
             diff = np.diff(sensi)
-
         # trimm 10% value to exclude outliers
         mu = trimmed_mean(diff, limits=(0.05, 0.05))
         sigma = trimmed_std(diff, limits=(0.05, 0.05), ddof=1)
@@ -255,21 +294,8 @@ def gen_cost_factor_func(
         outliers = sorted(
             zip(zscore[zscore > 3], np.where(zscore > 3)[0]), key=lambda ot: -ot[0]
         )
-
         # keep top n outliers
         if len(outliers) > sensitive_modules:
             outliers = outliers[0:sensitive_modules]
         module_outliers[module] = [ot[1] + 1 for ot in outliers]
-
-    def _set_cost_factor(row):
-        b1, g1 = row["nbit1"], row["gsize1"]
-        b2, g2 = row["nbit2"], row["gsize2"]
-        p, mod, layer = row["params"], row["module"], row["layer"]
-
-        bpp = b1 + 2 * b2 / g1 + 32 / g1 / g2
-        cost_factor = factor if layer in module_outliers[mod] else 1
-        low_bit_penalty = 4 if b1 < 3 else 2 if b1 < 4 else 1
-        row[dest] = low_bit_penalty * cost_factor / bpp * 100 * (p / tot_params)
-        return row
-
-    return _set_cost_factor
+    return module_outliers
