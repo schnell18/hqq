@@ -228,7 +228,7 @@ def prioritize(row, layer=0, factor=1.1):
 
 
 def gen_cost_factor_func(
-    df, factor, src, dest, diff_method="divide", sensitive_modules=2
+    df, factor, src, dest, diff_method="divide", sensitive_modules=1
 ):
     tot_params = df["params"].sum() / 12
 
