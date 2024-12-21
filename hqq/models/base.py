@@ -267,6 +267,8 @@ class BaseHQQModel:
                 decline_layers = quant_config.pop("decline_layers", None)
                 boost_stop = quant_config.pop("boost_stop", None)
                 decline_stop = quant_config.pop("decline_stop", None)
+                top_n_sensi_layer = quant_config.pop("top_n_sensi_layer", None)
+                ablation = quant_config.pop("ablation", None)
                 factor = quant_config.pop("factor", None)
                 kwargs = {
                     "weight_algo": weight_algo,
@@ -274,6 +276,8 @@ class BaseHQQModel:
                     "decline_layers": decline_layers,
                     "boost_stop": boost_stop,
                     "decline_stop": decline_stop,
+                    "top_n_sensi_layer": top_n_sensi_layer,
+                    "ablation": ablation,
                     "factor": factor,
                 }
                 optimal_configs, _ = find_optimal_configs(

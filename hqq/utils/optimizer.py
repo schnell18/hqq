@@ -1,3 +1,4 @@
+import random
 from functools import partial
 from typing import Dict, Optional, Tuple
 
@@ -40,11 +41,20 @@ def find_optimal_configs(
             decline_stop,
         )
     elif weight_algo == "sensi-boost":
+        top_n_sensi_layer = kwargs.get("top_n_sensi_layer", 1)
+        ablation = kwargs.get("ablation", False)
         df = pd.read_csv(model_metric_fp)
         max_layer = df["layer"].unique().max()
         modules = df["module"].unique()
         boost_mods = {mod: boost_layers for mod in modules}
-        module_outliers = identify_sensitive_modules(df, 2, "sensitivity")
+        if not ablation:
+            module_outliers = identify_sensitive_modules(
+                df, 2, "sensitivity", sensitive_modules=top_n_sensi_layer
+            )
+        else:
+            module_outliers = identify_sensitive_modules_ablation(
+                df, max_layer, 2, "sensitivity", sensitive_modules=top_n_sensi_layer
+            )
         boost_mods.update(module_outliers)
         return _allocate_boost_decline_configs(
             modules, max_layer, budget, boost_mods, None, boost_stop
@@ -248,11 +258,11 @@ def prioritize(row, layer=0, factor=1.1):
 
 
 def gen_cost_factor_func(
-    df, factor, src, dest, diff_method="divide", sensitive_modules=1
+    df, factor, src, dest, sensitive_modules=1, diff_method="divide"
 ):
     tot_params = df["params"].sum() / 12
     module_outliers = identify_sensitive_modules(
-        df, factor, src, diff_method="divide", sensitive_modules=1
+        df, factor, src, sensitive_modules=1, diff_method="divide"
     )
 
     def _set_cost_factor(row):
@@ -269,8 +279,24 @@ def gen_cost_factor_func(
     return _set_cost_factor
 
 
+def identify_sensitive_modules_ablation(
+    df, layers, factor, src, sensitive_modules=1, diff_method="divide"
+):
+    module_outliers = identify_sensitive_modules(
+        df, factor, src, sensitive_modules=sensitive_modules, diff_method=diff_method
+    )
+    for module in module_outliers:
+        layer_outliers = module_outliers[module]
+        if len(layer_outliers) > 0:
+            module_outliers[module] = random.sample(
+                list(set(range(layers)) - set(layer_outliers)), len(layer_outliers)
+            )
+
+    return module_outliers
+
+
 def identify_sensitive_modules(
-    df, factor, src, diff_method="divide", sensitive_modules=1
+    df, factor, src, sensitive_modules=1, diff_method="divide"
 ):
     module_outliers = {}
     modules = df["module"].unique()
@@ -295,7 +321,8 @@ def identify_sensitive_modules(
             zip(zscore[zscore > 3], np.where(zscore > 3)[0]), key=lambda ot: -ot[0]
         )
         # keep top n outliers
-        if len(outliers) > sensitive_modules:
+        if sensitive_modules != 0 and len(outliers) > sensitive_modules:
             outliers = outliers[0:sensitive_modules]
         module_outliers[module] = [ot[1] + 1 for ot in outliers]
+
     return module_outliers
