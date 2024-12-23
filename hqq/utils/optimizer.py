@@ -40,20 +40,35 @@ def find_optimal_configs(
             decline_mods,
             decline_stop,
         )
-    elif weight_algo == "sensi-boost":
-        top_n_sensi_layer = kwargs.get("top_n_sensi_layer", 1)
+    elif weight_algo == "sensi-boost" or weight_algo == "kurt-boost":
+        top_n_layer = kwargs.get("top_n_layer", 1)
         ablation = kwargs.get("ablation", False)
+        if weight_algo == "sensi-boost":
+            src = "sensitivity"
+            dif_method = "divide"
+        else:
+            src = "kurtosis"
+            dif_method = "subtract"
         df = pd.read_csv(model_metric_fp)
         max_layer = df["layer"].unique().max()
         modules = df["module"].unique()
         boost_mods = {mod: boost_layers for mod in modules}
         if not ablation:
             module_outliers = identify_sensitive_modules(
-                df, 2, "sensitivity", sensitive_modules=top_n_sensi_layer
+                df,
+                2,
+                src,
+                sensitive_modules=top_n_layer,
+                diff_method=dif_method,
             )
         else:
             module_outliers = identify_sensitive_modules_ablation(
-                df, max_layer, 2, "sensitivity", sensitive_modules=top_n_sensi_layer
+                df,
+                max_layer,
+                2,
+                src,
+                sensitive_modules=top_n_layer,
+                diff_method=dif_method,
             )
         boost_mods.update(module_outliers)
         return _allocate_boost_decline_configs(
