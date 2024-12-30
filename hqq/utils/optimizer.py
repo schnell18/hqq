@@ -218,7 +218,7 @@ def load_precomputed_metrics(
         func = gen_cost_factor_func(df, factor, "kurtosis_scaled", "cost")
         df = df.apply(func, axis=1)
     else:
-        df_fnorm["cost"] = df_fnorm["fnorm"]
+        df["cost"] = df["fnorm"]
 
     df_fnorm = df.pivot_table(
         values="cost",
