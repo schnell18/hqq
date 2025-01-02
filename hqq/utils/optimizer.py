@@ -41,7 +41,7 @@ def find_optimal_configs(
             decline_stop,
         )
     elif weight_algo == "sensi-boost" or weight_algo == "kurt-boost":
-        top_n_layer = kwargs.get("top_n_layer", 1)
+        top_m_layer = kwargs.get("top_m_layer", 1)
         ablation = kwargs.get("ablation", False)
         if weight_algo == "sensi-boost":
             src = "sensitivity"
@@ -58,7 +58,7 @@ def find_optimal_configs(
                 df,
                 2,
                 src,
-                top_n=top_n_layer,
+                top_m=top_m_layer,
                 diff_method=dif_method,
             )
         else:
@@ -68,7 +68,7 @@ def find_optimal_configs(
                 2,
                 src,
                 weight_algo,
-                top_n=top_n_layer,
+                top_m=top_m_layer,
                 diff_method=dif_method,
             )
         boost_mods.update(module_outliers)
@@ -201,21 +201,16 @@ def load_precomputed_metrics(
         df = df.apply(last_layer_prioritized, axis=1)
     elif weight_algo == "sensi-milp":
         factor = kwargs.get("factor", 2)
-        func = gen_cost_factor_func(df, factor, "sensitivity", "cost")
+        func = gen_cost_factor_func(
+            df, factor, "sensitivity", "cost", top_m=2, diff_method="divide"
+        )
         df = df.apply(func, axis=1)
     elif weight_algo == "kurtosis-milp":
         factor = kwargs.get("factor", 2)
-        # min-max scaling
-        df_kurt_agg = df.groupby("module").agg(
-            kurt_max=pd.NamedAgg(column="kurtosis", aggfunc="max"),
-            kurt_min=pd.NamedAgg(column="kurtosis", aggfunc="min"),
-        )
-        df = df.merge(df_kurt_agg, how="left", on="module")
-        df["kurtosis_scaled"] = (df["kurtosis"] - df["kurt_min"]) / (
-            df["kurt_max"] - df["kurt_min"]
-        )
         # use zscore to isolate kurtosis outliers
-        func = gen_cost_factor_func(df, factor, "kurtosis_scaled", "cost")
+        func = gen_cost_factor_func(
+            df, factor, "kurtosis", "cost", top_m=2, diff_method="subtract"
+        )
         df = df.apply(func, axis=1)
     else:
         df["cost"] = df["fnorm"]
@@ -273,10 +268,10 @@ def prioritize(row, layer=0, factor=1.1):
     return row
 
 
-def gen_cost_factor_func(df, factor, src, dest, top_n=1, diff_method="divide"):
+def gen_cost_factor_func(df, factor, src, dest, top_m=1, diff_method="divide"):
     tot_params = df["params"].sum() / 12
     module_outliers = identify_sensitive_modules(
-        df, factor, src, top_n=1, diff_method="divide"
+        df, factor, src, top_m=1, diff_method="divide"
     )
 
     def _set_cost_factor(row):
@@ -299,14 +294,14 @@ def identify_sensitive_modules_ablation(
     factor,
     src,
     weight_algo,
-    top_n=1,
+    top_m=1,
     diff_method="divide",
 ):
     module_outliers_sensi = identify_sensitive_modules(
-        df, factor, "sensitivity", top_n=top_n, diff_method="divide"
+        df, factor, "sensitivity", top_m=top_m, diff_method="divide"
     )
     module_outliers_kurt = identify_sensitive_modules(
-        df, factor, "kurtosis", top_n=top_n, diff_method="subtract"
+        df, factor, "kurtosis", top_m=top_m, diff_method="subtract"
     )
 
     module_outliers = {}
@@ -325,7 +320,7 @@ def identify_sensitive_modules_ablation(
     return module_outliers
 
 
-def identify_sensitive_modules(df, factor, src, top_n=1, diff_method="divide"):
+def identify_sensitive_modules(df, factor, src, top_m=1, diff_method="divide"):
     module_outliers = {}
     modules = df["module"].unique()
     for module in modules:
@@ -349,8 +344,8 @@ def identify_sensitive_modules(df, factor, src, top_n=1, diff_method="divide"):
             zip(zscore[zscore > 3], np.where(zscore > 3)[0]), key=lambda ot: -ot[0]
         )
         # keep top n outliers
-        if top_n != 0 and len(outliers) > top_n:
-            outliers = outliers[0:top_n]
+        if top_m != 0 and len(outliers) > top_m:
+            outliers = outliers[0:top_m]
         module_outliers[module] = [ot[1] + 1 for ot in outliers]
 
     return module_outliers

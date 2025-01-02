@@ -71,7 +71,7 @@ class BaseHQQOpenCLIPModel(BaseHQQModel):
                 decline_layers = quant_config.pop("decline_layers", None)
                 boost_stop = quant_config.pop("boost_stop", None)
                 decline_stop = quant_config.pop("decline_stop", None)
-                top_n_layer = quant_config.pop("top_n_layer", None)
+                top_m_layer = quant_config.pop("top_m_layer", None)
                 ablation = quant_config.pop("ablation", None)
                 factor = quant_config.pop("factor", None)
                 kwargs = {
@@ -80,7 +80,7 @@ class BaseHQQOpenCLIPModel(BaseHQQModel):
                     "decline_layers": decline_layers,
                     "boost_stop": boost_stop,
                     "decline_stop": decline_stop,
-                    "top_n_layer": top_n_layer,
+                    "top_m_layer": top_m_layer,
                     "ablation": ablation,
                     "factor": factor,
                 }
