@@ -56,7 +56,6 @@ def find_optimal_configs(
         if not ablation:
             module_outliers = identify_sensitive_modules(
                 df,
-                2,
                 src,
                 top_m=top_m_layer,
                 diff_method=dif_method,
@@ -65,7 +64,6 @@ def find_optimal_configs(
             module_outliers = identify_sensitive_modules_ablation(
                 df,
                 max_layer,
-                2,
                 src,
                 weight_algo,
                 top_m=top_m_layer,
@@ -199,17 +197,24 @@ def load_precomputed_metrics(
         last_layer = df["layer"].max()
         last_layer_prioritized = partial(prioritize, layer=last_layer, factor=factor)
         df = df.apply(last_layer_prioritized, axis=1)
-    elif weight_algo == "sensi-milp":
+    elif weight_algo == "sensi-milp" or weight_algo == "kurtosis-milp":
+        ablation = kwargs.get("ablation", False)
+        top_m_layer = kwargs.get("top_m_layer", 1)
+        if weight_algo == "sensi-milp":
+            src = "sensitivity"
+            diff_method = "divide"
+        else:
+            src = "kurtosis"
+            diff_method = "subtract"
         factor = kwargs.get("factor", 2)
         func = gen_cost_factor_func(
-            df, factor, "sensitivity", "cost", top_m=2, diff_method="divide"
-        )
-        df = df.apply(func, axis=1)
-    elif weight_algo == "kurtosis-milp":
-        factor = kwargs.get("factor", 2)
-        # use zscore to isolate kurtosis outliers
-        func = gen_cost_factor_func(
-            df, factor, "kurtosis", "cost", top_m=2, diff_method="subtract"
+            df,
+            factor,
+            src,
+            "cost",
+            top_m=top_m_layer,
+            diff_method=diff_method,
+            ablation=ablation,
         )
         df = df.apply(func, axis=1)
     else:
@@ -268,11 +273,15 @@ def prioritize(row, layer=0, factor=1.1):
     return row
 
 
-def gen_cost_factor_func(df, factor, src, dest, top_m=1, diff_method="divide"):
+def gen_cost_factor_func(
+    df, factor, src, dest, top_m=1, diff_method="divide", ablation=False
+):
     tot_params = df["params"].sum() / 12
-    module_outliers = identify_sensitive_modules(
-        df, factor, src, top_m=1, diff_method="divide"
-    )
+    module_outliers = {}
+    if not ablation:
+        module_outliers = identify_sensitive_modules(
+            df, src, top_m=top_m, diff_method=diff_method
+        )
 
     def _set_cost_factor(row):
         b1, g1 = row["nbit1"], row["gsize1"]
@@ -280,7 +289,9 @@ def gen_cost_factor_func(df, factor, src, dest, top_m=1, diff_method="divide"):
         p, mod, layer = row["params"], row["module"], row["layer"]
 
         bpp = b1 + 2 * b2 / g1 + 32 / g1 / g2
-        cost_factor = factor if layer in module_outliers[mod] else 1
+        cost_factor = (
+            factor if mod in module_outliers and layer in module_outliers[mod] else 1
+        )
         low_bit_penalty = 4 if b1 < 3 else 2 if b1 < 4 else 1
         row[dest] = low_bit_penalty * cost_factor / bpp * 100 * (p / tot_params)
         return row
@@ -291,17 +302,16 @@ def gen_cost_factor_func(df, factor, src, dest, top_m=1, diff_method="divide"):
 def identify_sensitive_modules_ablation(
     df,
     layers,
-    factor,
     src,
     weight_algo,
     top_m=1,
     diff_method="divide",
 ):
     module_outliers_sensi = identify_sensitive_modules(
-        df, factor, "sensitivity", top_m=top_m, diff_method="divide"
+        df, "sensitivity", top_m=top_m, diff_method="divide"
     )
     module_outliers_kurt = identify_sensitive_modules(
-        df, factor, "kurtosis", top_m=top_m, diff_method="subtract"
+        df, "kurtosis", top_m=top_m, diff_method="subtract"
     )
 
     module_outliers = {}
@@ -320,7 +330,7 @@ def identify_sensitive_modules_ablation(
     return module_outliers
 
 
-def identify_sensitive_modules(df, factor, src, top_m=1, diff_method="divide"):
+def identify_sensitive_modules(df, src, top_m=1, diff_method="divide"):
     module_outliers = {}
     modules = df["module"].unique()
     for module in modules:
