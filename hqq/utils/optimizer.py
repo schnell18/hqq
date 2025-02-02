@@ -197,7 +197,7 @@ def load_precomputed_metrics(
         last_layer = df["layer"].max()
         last_layer_prioritized = partial(prioritize, layer=last_layer, factor=factor)
         df = df.apply(last_layer_prioritized, axis=1)
-    elif weight_algo == "sensi-milp" or weight_algo == "kurtosis-milp":
+    elif weight_algo == "sensi-milp" or weight_algo == "kurt-milp":
         ablation = kwargs.get("ablation", False)
         top_m_layer = kwargs.get("top_m_layer", 1)
         if weight_algo == "sensi-milp":
