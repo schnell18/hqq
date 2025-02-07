@@ -27,17 +27,15 @@ def find_optimal_configs(
     decline_stop = kwargs.get("decline_stop", -1)
     if weight_algo == "sensi-directive":
         df = pd.read_csv(model_metric_fp)
-        max_layer = df["layer"].unique().max()
         modules = df["module"].unique()
         boost_mods = {mod: boost_layers for mod in modules}
         decline_mods = {mod: decline_layers for mod in modules}
         return _allocate_boost_decline_configs(
-            modules,
-            max_layer,
+            df,
             budget,
             boost_mods,
-            boost_stop,
             decline_mods,
+            boost_stop,
             decline_stop,
         )
     elif weight_algo == "sensi-boost" or weight_algo == "kurt-boost":
@@ -70,9 +68,7 @@ def find_optimal_configs(
                 diff_method=dif_method,
             )
         boost_mods.update(module_outliers)
-        return _allocate_boost_decline_configs(
-            modules, max_layer, budget, boost_mods, None, boost_stop
-        )
+        return _allocate_boost_decline_configs(df, budget, boost_mods, None, boost_stop)
     else:
         return _find_optimal_configs_milp(
             model_metric_fp,
@@ -85,8 +81,7 @@ def find_optimal_configs(
 
 
 def _allocate_boost_decline_configs(
-    modules,
-    max_layer,
+    df,
     budget,
     boost_layers,
     decline_layers,
@@ -127,8 +122,11 @@ def _allocate_boost_decline_configs(
     b1_boost, g1_boost = boost_cfg(budget, boost_stop)
     b1_decline, g1_decline = boost_cfg(budget, decline_stop)
     cfgs = {}
-    for layer in range(0, max_layer + 1):
-        for module in modules:
+
+    modules = df.groupby(["module"]).layer.nunique().to_dict()
+    for module in modules:
+        layers = modules[module]
+        for layer in range(0, layers):
             if (
                 boost_layers
                 and module in boost_layers
