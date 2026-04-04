@@ -39,7 +39,10 @@ class LLamaPatch(BasePatch):
 
         layers = base_model.layers
         for i in tqdm(range(len(base_model.layers)), disable=not verbose):
-            layers[i].self_attn.rotary_emb = patch_fct(layers[i].self_attn.rotary_emb)
+            if hasattr(layers[i].self_attn, "rotary_emb"):
+                layers[i].self_attn.rotary_emb = patch_fct(
+                    layers[i].self_attn.rotary_emb
+                )
             layers[i].mlp.act_fn = patch_fct(layers[i].mlp.act_fn)
             layers[i].input_layernorm = patch_fct(layers[i].input_layernorm)
             layers[i].post_attention_layernorm = patch_fct(
