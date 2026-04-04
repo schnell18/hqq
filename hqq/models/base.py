@@ -1,27 +1,24 @@
 # SPDX-License-Identifier: Apache-2.0
 # Written by Dr. Hicham Badri @Mobius Labs GmbH - 2023
 
-import os
 import json
-import torch
-from torch import nn
-from torch import float16
-from os.path import join as pjoin
-from typing import Callable
-from tqdm import tqdm
+import os
 from abc import abstractmethod
 from functools import partial
-from typing import Union
+from os.path import join as pjoin
+from typing import Callable, Union
 
+import torch
 from huggingface_hub import snapshot_download
-from ..core.utils import cleanup
-from ..core.quantize import HQQLinear
-from ..core.peft import PeftUtils, _HQQ_LORA_CLASSES
-from ..backends.torchao import HQQLinearTorchWeightOnlynt4
-
 from safetensors.torch import save_file
-from ..utils.optimizer import find_optimal_configs
+from torch import float16, nn
+from tqdm import tqdm
 
+from ..backends.torchao import HQQLinearTorchWeightOnlynt4
+from ..core.peft import _HQQ_LORA_CLASSES, PeftUtils
+from ..core.quantize import HQQLinear
+from ..core.utils import cleanup
+from ..utils.optimizer import find_optimal_configs
 
 _HQQ_BACKEND_CLASSES = [HQQLinearTorchWeightOnlynt4]
 
@@ -324,13 +321,20 @@ class BaseHQQModel:
         # Get list of all nodes in order
         all_nodes = get_all_children_from_model(model, [])  # ordered nodes
         try:
-            # Extract block names: This is following Hugging Face models.
-            num_blocks = (
-                len(model.model.layers)
-                if hasattr(model, "model")
-                else len(model.layers)
-            )
-            all_blocks = ["model.layers." + str(i) for i in range(num_blocks)]
+            # For VLM only include text model
+            if hasattr(model, "model") and hasattr(model.model, "language_model"):
+                all_blocks = [
+                    "model.language_model.layers." + str(i)
+                    for i in range(len(model.model.language_model.layers))
+                ]
+            else:
+                # Extract block names: This is following Hugging Face models.
+                num_blocks = (
+                    len(model.model.layers)
+                    if hasattr(model, "model")
+                    else len(model.layers)
+                )
+                all_blocks = ["model.layers." + str(i) for i in range(num_blocks)]
         except Exception:
             all_blocks = None
             print(
@@ -577,8 +581,7 @@ class BaseHQQModel:
     @classmethod
     def save_to_safetensors(
         cls, model, save_dir: str, num_blocks_per_file: int = 5, verbose: bool = True
-     ):
-
+    ):
         def generate_file_list(num_files):
             files = [
                 f"model-{i:05d}-of-{num_files:05d}.safetensors"
@@ -600,19 +603,19 @@ class BaseHQQModel:
             update_num_layers(model)
             return num_layers
 
-        if(hasattr(model.config, 'num_hidden_layers')):
+        if hasattr(model.config, "num_hidden_layers"):
             num_layers = model.config.num_hidden_layers
         else:
             num_layers = get_num_layers(model)
 
-        #Create directory
-        if(save_dir[-1] != '/'):
-            save_dir += '/'
+        # Create directory
+        if save_dir[-1] != "/":
+            save_dir += "/"
 
-        os.system('mkdir ' + save_dir)
+        os.system("mkdir " + save_dir)
 
-        #Save config
-        if(hasattr(model.config, '_attn_implementation_autoset')):
+        # Save config
+        if hasattr(model.config, "_attn_implementation_autoset"):
             del model.config._attn_implementation_autoset
 
         model.config.to_json_file(save_dir + "config.json")
@@ -620,9 +623,12 @@ class BaseHQQModel:
         tensors = model.state_dict()
         num_chunks = num_layers // num_blocks_per_file
 
-        #Single file
-        if(num_chunks<=1):
-            save_file({key: tensors[key].cpu() for key in tensors}, save_dir + "model.safetensors")
+        # Single file
+        if num_chunks <= 1:
+            save_file(
+                {key: tensors[key].cpu() for key in tensors},
+                save_dir + "model.safetensors",
+            )
             return
 
         # Total size
@@ -645,7 +651,7 @@ class BaseHQQModel:
                 chunk = {key: tensors[key].cpu() for key in remaining_keys}
                 key_seen |= remaining_keys
 
-                if(len(chunk)>0):
+                if len(chunk) > 0:
                     if verbose:
                         print("saving", chunk_id, ":", len(chunk), "/", num_params)
                     save_file(chunk, current_file)
@@ -666,7 +672,7 @@ class BaseHQQModel:
                         key_seen.add(key)
                         index[key] = current_file.split("/")[-1]
 
-                if(len(chunk)>0):
+                if len(chunk) > 0:
                     if verbose:
                         print("saving", chunk_id, ":", len(chunk), "/", num_params)
                     save_file(chunk, current_file)

@@ -1,20 +1,23 @@
 # SPDX-License-Identifier: Apache-2.0
 # Written by Dr. Hicham Badri @Mobius Labs GmbH - 2023
 
-import transformers
 import torch
-from .base import HQQWrapper
+import transformers
 
-from ..models.hf.llama import LlamaHQQ
+from hqq.models.hf.mistral import MistralHQQ
 from hqq.models.hf.mixtral import MixtralHQQ
 from hqq.models.hf.phi import PhiHQQ
-from hqq.models.hf.mistral import MistralHQQ
+from hqq.models.hf.qwen35 import Qwen35HQQ
+
+from ..models.hf.llama import LlamaHQQ
+from .base import HQQWrapper
 
 _HQQ_REGISTRY = {}
 _HQQ_REGISTRY["LlamaForCausalLM"] = LlamaHQQ
 _HQQ_REGISTRY["MixtralForCausalLM"] = MixtralHQQ
 _HQQ_REGISTRY["PhiForCausalLM"] = PhiHQQ
 _HQQ_REGISTRY["MistralForCausalLM"] = MistralHQQ
+_HQQ_REGISTRY["Qwen3_5ForConditionalGeneration"] = Qwen35HQQ
 
 # Alias
 AutoTokenizer = transformers.AutoTokenizer
@@ -63,7 +66,14 @@ class HQQModelForCausalLM(_Parent, HQQWrapper):
     @classmethod
     def from_pretrained(cls, *args, **kwargs):
         cls._validate_params(kwargs)
-        model = super(_Parent, cls).from_pretrained(*args, **kwargs)
+        cfg = transformers.AutoConfig.from_pretrained(*args, **kwargs)
+        if hasattr(cfg, "vision_config") or hasattr(cfg, "text_config"):
+            model = transformers.AutoModelForImageTextToText.from_pretrained(
+                *args,
+                **kwargs,
+            )
+        else:
+            model = transformers.AutoModelForCausalLM.from_pretrained(*args, **kwargs)
         cls._make_quantizable(model, quantized=False)
         return model
 
