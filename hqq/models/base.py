@@ -6,6 +6,7 @@ import os
 from abc import abstractmethod
 from functools import partial
 from os.path import join as pjoin
+from pathlib import Path
 from typing import Callable, Union
 
 import torch
@@ -459,15 +460,22 @@ class BaseHQQModel:
 
     # Main function to save a quantized model
     @classmethod
-    def save_quantized(cls, model, save_dir: str, verbose: bool = False):
+    def save_quantized(
+        cls,
+        model,
+        save_dir: str,
+        verbose: bool = False,
+        safetensors: bool = True,
+    ):
         # Save config
         cls.cache_model(model, save_dir)
-
-        # Serialization
-        weights = cls.serialize_weights(model, verbose=verbose)
-
-        # Save
-        cls.save_weights(weights, save_dir)
+        if safetensors:
+            cls.save_to_safetensors(model, save_dir, verbose=verbose)
+        else:
+            cls.save_weights(
+                cls.serialize_weights(model, verbose=verbose),
+                save_dir,
+            )
 
     @classmethod
     def try_snapshot_download(
@@ -620,11 +628,9 @@ class BaseHQQModel:
             num_layers = get_num_layers(model)
             layer_tag_prefix = "layers."
 
-        # Create directory
-        if save_dir[-1] != "/":
-            save_dir += "/"
-
-        os.system("mkdir " + save_dir)
+        # Create directory only if it doesn't exist (portable across OSes)
+        save_path = Path(save_dir)
+        save_path.mkdir(parents=True, exist_ok=True)
 
         # Save config
         if hasattr(model.config, "_attn_implementation_autoset"):
@@ -659,7 +665,9 @@ class BaseHQQModel:
             current_file = save_dir + files[chunk_id - 1]
             remaining_keys = all_keys - key_seen
 
-            if chunk_id == num_chunks:  # Last chunk, save the rest (including vision encoder)
+            if (
+                chunk_id == num_chunks
+            ):  # Last chunk, save the rest (including vision encoder)
                 chunk = {key: tensors[key].cpu() for key in remaining_keys}
                 key_seen |= remaining_keys
 
