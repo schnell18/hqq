@@ -8,6 +8,7 @@ from functools import partial
 from os.path import join as pjoin
 from pathlib import Path
 from typing import Callable, Union
+from safetensors.torch import load_file
 
 import torch
 from huggingface_hub import snapshot_download
@@ -38,7 +39,8 @@ except Exception:
     pass
 
 # Defined what is qualified as "linear layer"
-_QUANT_LAYERS = [nn.Linear, HQQLinear] + _HQQ_LORA_CLASSES + _HQQ_BACKEND_CLASSES
+_QUANT_LAYERS = [nn.Linear, HQQLinear] + \
+    _HQQ_LORA_CLASSES + _HQQ_BACKEND_CLASSES
 _IGNORE_LINEAR = ["lm_head"]
 
 
@@ -149,7 +151,8 @@ class BasePatch:
         for name in tqdm(tmp_mapping, disable=not verbose):
             linear_tag = name_to_linear_tag(name)
             patch_param = (
-                patch_params[linear_tag] if (linear_tag in patch_params) else None
+                patch_params[linear_tag] if (
+                    linear_tag in patch_params) else None
             )
             setattr(
                 find_parent(model, name),
@@ -216,7 +219,8 @@ class BasePatch:
         cls.freeze_model(model)
         cls.autoname_modules(model)
         cls.patch_nonlinearlayers(model, patch_nonlinear_fct, verbose=verbose)
-        cls.patch_linearlayers(model, patch_linear_fct, patch_params, verbose=verbose)
+        cls.patch_linearlayers(model, patch_linear_fct,
+                               patch_params, verbose=verbose)
         cleanup()
 
 
@@ -251,9 +255,52 @@ class BaseHQQModel:
     # Load weights from disk
     @classmethod
     def load_weights(cls, save_dir: str, map_location=None):
+        if cls._is_safetensors_dir(save_dir):
+            return cls._load_safetensors_weights(save_dir, map_location)
         return torch.load(
-            cls.get_weight_file(save_dir), map_location=map_location, weights_only=True
+            cls.get_weight_file(save_dir),
+            map_location=map_location,
+            weights_only=True,
         )
+
+    @classmethod
+    def _is_safetensors_dir(cls, save_dir: str) -> bool:
+        return os.path.exists(pjoin(save_dir, "model.safetensors.index.json")) or \
+            os.path.exists(pjoin(save_dir, "model.safetensors"))
+
+    @classmethod
+    def _load_safetensors_weights(cls, save_dir: str, map_location=None) -> dict:
+
+        device = str(map_location) if map_location is not None else "cpu"
+
+        index_file = pjoin(save_dir, "model.safetensors.index.json")
+        single_file = pjoin(save_dir, "model.safetensors")
+
+        # Load all shards into a single flat dict
+        if os.path.exists(index_file):
+            with open(index_file) as f:
+                index = json.load(f)
+            shard_files = sorted(set(index["weight_map"].values()))
+            flat = {}
+            for shard in shard_files:
+                flat.update(load_file(pjoin(save_dir, shard), device=device))
+        else:
+            flat = load_file(single_file, device=device)
+
+        # Unflatten: "model.layers.0.q_proj.W_q" → {"model.layers.0.q_proj": {"W_q": tensor}}
+        # All HQQLinear param names (W_q, scale, zero, nbits, …) and standard
+        # nn.Parameter names (weight, bias) are single-component — no dots — so
+        # splitting at the last dot unambiguously recovers module name + param name.
+        nested = {}
+        for full_key, tensor in flat.items():
+            last_dot = full_key.rfind(".")
+            if last_dot == -1:
+                continue  # no module prefix — skip unexpected root-level keys
+            module_name = full_key[:last_dot]
+            param_name = full_key[last_dot + 1:]
+            nested.setdefault(module_name, {})[param_name] = tensor
+
+        return nested
 
     # Set-up model with the necessary data
     @classmethod
@@ -335,7 +382,8 @@ class BaseHQQModel:
                     if hasattr(model, "model")
                     else len(model.layers)
                 )
-                all_blocks = ["model.layers." + str(i) for i in range(num_blocks)]
+                all_blocks = ["model.layers." +
+                              str(i) for i in range(num_blocks)]
         except Exception:
             all_blocks = None
             print(
@@ -398,7 +446,8 @@ class BaseHQQModel:
                     device=current_device,
                 )
             else:
-                out_module = linear_layer.to(device=current_device, dtype=compute_dtype)
+                out_module = linear_layer.to(
+                    device=current_device, dtype=compute_dtype)
 
             out_module.device = current_device
             return out_module
@@ -487,11 +536,16 @@ class BaseHQQModel:
             save_dir = pjoin(cache_dir, save_dir_or_hub)
 
         if not os.path.exists(save_dir):
-            save_dir = snapshot_download(repo_id=save_dir_or_hub, cache_dir=cache_dir)
+            save_dir = snapshot_download(
+                repo_id=save_dir_or_hub, cache_dir=cache_dir)
             save_dir = pjoin(save_dir)
 
-        # Check
-        if not os.path.exists(cls.get_weight_file(save_dir)):
+        # Accept either safetensors (new default) or legacy qmodel.pt
+        has_weights = (
+            cls._is_safetensors_dir(save_dir)
+            or os.path.exists(cls.get_weight_file(save_dir))
+        )
+        if not has_weights:
             raise Exception("Weight file missing. Check your cache directory.")
         if not os.path.exists(cls.get_config_file(save_dir)):
             raise Exception("Config file missing. Check your cache directory.")
@@ -565,7 +619,8 @@ class BaseHQQModel:
 
         # Load modules
         cls.patch_model(
-            model, _load_module, _load_module, {k: None for k in model.linear_tags}
+            model, _load_module, _load_module, {
+                k: None for k in model.linear_tags}
         )
 
         # Load other weights that are not part of any module
@@ -579,7 +634,8 @@ class BaseHQQModel:
         # Add adapter
         if adapter is not None:
             try:
-                PeftUtils.load_lora_weights(model, filename=pjoin(save_dir, adapter))
+                PeftUtils.load_lora_weights(
+                    model, filename=pjoin(save_dir, adapter))
                 PeftUtils.cast_lora_weights(model, dtype=compute_dtype)
             except Exception as e:
                 print("Skipping adapter loading...", str(e))
@@ -673,9 +729,11 @@ class BaseHQQModel:
 
                 if len(chunk) > 0:
                     if verbose:
-                        print("saving", chunk_id, ":", len(chunk), "/", num_params)
+                        print("saving", chunk_id, ":",
+                              len(chunk), "/", num_params)
                     save_file(chunk, current_file)
-                index.update({key: current_file.split("/")[-1] for key in chunk})
+                index.update(
+                    {key: current_file.split("/")[-1] for key in chunk})
                 total_seen += len(chunk)
             else:
                 tags = [
@@ -694,7 +752,8 @@ class BaseHQQModel:
 
                 if len(chunk) > 0:
                     if verbose:
-                        print("saving", chunk_id, ":", len(chunk), "/", num_params)
+                        print("saving", chunk_id, ":",
+                              len(chunk), "/", num_params)
                     save_file(chunk, current_file)
                 total_seen += len(chunk)
 
