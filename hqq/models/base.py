@@ -603,10 +603,22 @@ class BaseHQQModel:
             update_num_layers(model)
             return num_layers
 
-        if hasattr(model.config, "num_hidden_layers"):
+        # For VLMs with a nested language model (e.g. Qwen3.5), the text
+        # decoder lives at model.model.language_model.layers.{i} while the
+        # vision encoder also has paths containing "layers.{i}".
+        # Use the fully-qualified prefix so only text-decoder layers are matched
+        # during chunking; all remaining tensors (vision encoder, embeddings,
+        # lm_head) are flushed into the final shard.
+        if hasattr(model, "model") and hasattr(model.model, "language_model"):
+            lang_model = model.model.language_model
+            num_layers = len(lang_model.layers)
+            layer_tag_prefix = "model.language_model.layers."
+        elif hasattr(model.config, "num_hidden_layers"):
             num_layers = model.config.num_hidden_layers
+            layer_tag_prefix = "layers."
         else:
             num_layers = get_num_layers(model)
+            layer_tag_prefix = "layers."
 
         # Create directory
         if save_dir[-1] != "/":
@@ -647,7 +659,7 @@ class BaseHQQModel:
             current_file = save_dir + files[chunk_id - 1]
             remaining_keys = all_keys - key_seen
 
-            if chunk_id == num_chunks:  # Last chunk, save the rest
+            if chunk_id == num_chunks:  # Last chunk, save the rest (including vision encoder)
                 chunk = {key: tensors[key].cpu() for key in remaining_keys}
                 key_seen |= remaining_keys
 
@@ -659,7 +671,7 @@ class BaseHQQModel:
                 total_seen += len(chunk)
             else:
                 tags = [
-                    "layers." + str(i) + "."
+                    layer_tag_prefix + str(i) + "."
                     for i in range((chunk_id - 1) * chunk_step, chunk_id * chunk_step)
                 ]
 
