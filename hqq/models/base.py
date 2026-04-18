@@ -283,10 +283,12 @@ class BaseHQQModel:
         else:
             flat = load_file(single_file, device=device)
 
-        # Unflatten: "model.layers.0.q_proj.W_q" → {"model.layers.0.q_proj": {"W_q": tensor}}
+        # Unflatten: "model.layers.0.q_proj.W_q" →
+        # {"model.layers.0.q_proj": {"W_q": tensor}}
         # All HQQLinear param names (W_q, scale, zero, nbits, …) and standard
         # nn.Parameter names (weight, bias) are single-component — no dots — so
-        # splitting at the last dot unambiguously recovers module name + param name.
+        # splitting at the last dot unambiguously recovers
+        # module name + param name.
         nested = {}
         for full_key, tensor in flat.items():
             last_dot = full_key.rfind(".")
@@ -447,7 +449,8 @@ class BaseHQQModel:
             return out_module
 
         def _patch_other(layer):
-            current_device = device_map[layer.name]
+            # TODO: figure out a generalised fix for Qwen3.5 model
+            current_device = device_map.get(layer.name, "cuda:0")
             layer.device = current_device
             return layer.to(device=current_device, dtype=compute_dtype)
 

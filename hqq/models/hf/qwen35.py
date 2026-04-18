@@ -51,7 +51,6 @@ class Qwen35Patch(BasePatch):
             )
 
             # Standard attention layers carry q_norm / k_norm (QK-RMSNorm).
-            # Hybrid linear-attention layers (Qwen3_5GatedDeltaNet) do not.
             if hasattr(layers[i], "self_attn"):
                 attn = layers[i].self_attn
                 if hasattr(attn, "rotary_emb"):
@@ -60,6 +59,26 @@ class Qwen35Patch(BasePatch):
                     attn.q_norm = patch_fct(attn.q_norm)
                 if hasattr(attn, "k_norm"):
                     attn.k_norm = patch_fct(attn.k_norm)
+
+            # Hybrid linear-attention layers (Qwen3_5GatedDeltaNet).
+            if hasattr(layers[i], "linear_attn"):
+                lattn = layers[i].linear_attn
+                # load A_log, dt_bias
+                lattn = patch_fct(lattn)
+                if hasattr(lattn, "conv1d"):
+                    lattn.conv1d = patch_fct(lattn.conv1d)
+                if hasattr(lattn, "in_proj_a"):
+                    lattn.in_proj_a = patch_fct(lattn.in_proj_a)
+                if hasattr(lattn, "in_proj_b"):
+                    lattn.in_proj_b = patch_fct(lattn.in_proj_b)
+                if hasattr(lattn, "in_proj_qkv"):
+                    lattn.in_proj_qkv = patch_fct(lattn.in_proj_qkv)
+                if hasattr(lattn, "in_proj_z"):
+                    lattn.in_proj_z = patch_fct(lattn.in_proj_z)
+                if hasattr(lattn, "norm"):
+                    lattn.norm = patch_fct(lattn.norm)
+                if hasattr(lattn, "out_proj"):
+                    lattn.out_proj = patch_fct(lattn.out_proj)
 
             if hasattr(layers[i].mlp, "act_fn"):
                 layers[i].mlp.act_fn = patch_fct(layers[i].mlp.act_fn)
@@ -70,7 +89,8 @@ class Qwen35Patch(BasePatch):
     @classmethod
     def _patch_subtree_leaves(cls, root, patch_fct, verbose=True):
         leaf_paths = [
-            name for name, module in root.named_modules()
+            name
+            for name, module in root.named_modules()
             if name and is_leaf_module(module)
         ]
         for path in tqdm(leaf_paths, disable=not verbose):
