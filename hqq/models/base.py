@@ -8,11 +8,10 @@ from functools import partial
 from os.path import join as pjoin
 from pathlib import Path
 from typing import Callable, Union
-from safetensors.torch import load_file
 
 import torch
 from huggingface_hub import snapshot_download
-from safetensors.torch import save_file
+from safetensors.torch import load_file, save_file
 from torch import float16, nn
 from tqdm import tqdm
 
@@ -39,8 +38,7 @@ except Exception:
     pass
 
 # Defined what is qualified as "linear layer"
-_QUANT_LAYERS = [nn.Linear, HQQLinear] + \
-    _HQQ_LORA_CLASSES + _HQQ_BACKEND_CLASSES
+_QUANT_LAYERS = [nn.Linear, HQQLinear] + _HQQ_LORA_CLASSES + _HQQ_BACKEND_CLASSES
 _IGNORE_LINEAR = ["lm_head"]
 
 
@@ -151,8 +149,7 @@ class BasePatch:
         for name in tqdm(tmp_mapping, disable=not verbose):
             linear_tag = name_to_linear_tag(name)
             patch_param = (
-                patch_params[linear_tag] if (
-                    linear_tag in patch_params) else None
+                patch_params[linear_tag] if (linear_tag in patch_params) else None
             )
             setattr(
                 find_parent(model, name),
@@ -219,8 +216,7 @@ class BasePatch:
         cls.freeze_model(model)
         cls.autoname_modules(model)
         cls.patch_nonlinearlayers(model, patch_nonlinear_fct, verbose=verbose)
-        cls.patch_linearlayers(model, patch_linear_fct,
-                               patch_params, verbose=verbose)
+        cls.patch_linearlayers(model, patch_linear_fct, patch_params, verbose=verbose)
         cleanup()
 
 
@@ -265,12 +261,12 @@ class BaseHQQModel:
 
     @classmethod
     def _is_safetensors_dir(cls, save_dir: str) -> bool:
-        return os.path.exists(pjoin(save_dir, "model.safetensors.index.json")) or \
-            os.path.exists(pjoin(save_dir, "model.safetensors"))
+        return os.path.exists(
+            pjoin(save_dir, "model.safetensors.index.json")
+        ) or os.path.exists(pjoin(save_dir, "model.safetensors"))
 
     @classmethod
     def _load_safetensors_weights(cls, save_dir: str, map_location=None) -> dict:
-
         device = str(map_location) if map_location is not None else "cpu"
 
         index_file = pjoin(save_dir, "model.safetensors.index.json")
@@ -297,7 +293,7 @@ class BaseHQQModel:
             if last_dot == -1:
                 continue  # no module prefix — skip unexpected root-level keys
             module_name = full_key[:last_dot]
-            param_name = full_key[last_dot + 1:]
+            param_name = full_key[last_dot + 1 :]
             nested.setdefault(module_name, {})[param_name] = tensor
 
         return nested
@@ -382,8 +378,7 @@ class BaseHQQModel:
                     if hasattr(model, "model")
                     else len(model.layers)
                 )
-                all_blocks = ["model.layers." +
-                              str(i) for i in range(num_blocks)]
+                all_blocks = ["model.layers." + str(i) for i in range(num_blocks)]
         except Exception:
             all_blocks = None
             print(
@@ -446,8 +441,7 @@ class BaseHQQModel:
                     device=current_device,
                 )
             else:
-                out_module = linear_layer.to(
-                    device=current_device, dtype=compute_dtype)
+                out_module = linear_layer.to(device=current_device, dtype=compute_dtype)
 
             out_module.device = current_device
             return out_module
@@ -536,14 +530,12 @@ class BaseHQQModel:
             save_dir = pjoin(cache_dir, save_dir_or_hub)
 
         if not os.path.exists(save_dir):
-            save_dir = snapshot_download(
-                repo_id=save_dir_or_hub, cache_dir=cache_dir)
+            save_dir = snapshot_download(repo_id=save_dir_or_hub, cache_dir=cache_dir)
             save_dir = pjoin(save_dir)
 
         # Accept either safetensors (new default) or legacy qmodel.pt
-        has_weights = (
-            cls._is_safetensors_dir(save_dir)
-            or os.path.exists(cls.get_weight_file(save_dir))
+        has_weights = cls._is_safetensors_dir(save_dir) or os.path.exists(
+            cls.get_weight_file(save_dir)
         )
         if not has_weights:
             raise Exception("Weight file missing. Check your cache directory.")
@@ -619,8 +611,7 @@ class BaseHQQModel:
 
         # Load modules
         cls.patch_model(
-            model, _load_module, _load_module, {
-                k: None for k in model.linear_tags}
+            model, _load_module, _load_module, {k: None for k in model.linear_tags}
         )
 
         # Load other weights that are not part of any module
@@ -634,8 +625,7 @@ class BaseHQQModel:
         # Add adapter
         if adapter is not None:
             try:
-                PeftUtils.load_lora_weights(
-                    model, filename=pjoin(save_dir, adapter))
+                PeftUtils.load_lora_weights(model, filename=pjoin(save_dir, adapter))
                 PeftUtils.cast_lora_weights(model, dtype=compute_dtype)
             except Exception as e:
                 print("Skipping adapter loading...", str(e))
@@ -692,7 +682,7 @@ class BaseHQQModel:
         if hasattr(model.config, "_attn_implementation_autoset"):
             del model.config._attn_implementation_autoset
 
-        model.config.to_json_file(save_dir + "config.json")
+        model.config.to_json_file(pjoin(save_dir, "config.json"))
 
         tensors = model.state_dict()
         num_chunks = num_layers // num_blocks_per_file
@@ -701,7 +691,7 @@ class BaseHQQModel:
         if num_chunks <= 1:
             save_file(
                 {key: tensors[key].cpu() for key in tensors},
-                save_dir + "model.safetensors",
+                pjoin(save_dir, "model.safetensors"),
             )
             return
 
@@ -718,7 +708,7 @@ class BaseHQQModel:
         key_seen = set()
         index = {}
         for chunk_id in range(1, num_chunks + 1):
-            current_file = save_dir + files[chunk_id - 1]
+            current_file = pjoin(save_dir, files[chunk_id - 1])
             remaining_keys = all_keys - key_seen
 
             if (
@@ -729,11 +719,9 @@ class BaseHQQModel:
 
                 if len(chunk) > 0:
                     if verbose:
-                        print("saving", chunk_id, ":",
-                              len(chunk), "/", num_params)
+                        print("saving", chunk_id, ":", len(chunk), "/", num_params)
                     save_file(chunk, current_file)
-                index.update(
-                    {key: current_file.split("/")[-1] for key in chunk})
+                index.update({key: current_file.split("/")[-1] for key in chunk})
                 total_seen += len(chunk)
             else:
                 tags = [
@@ -752,13 +740,12 @@ class BaseHQQModel:
 
                 if len(chunk) > 0:
                     if verbose:
-                        print("saving", chunk_id, ":",
-                              len(chunk), "/", num_params)
+                        print("saving", chunk_id, ":", len(chunk), "/", num_params)
                     save_file(chunk, current_file)
                 total_seen += len(chunk)
 
         assert total_seen == num_params
 
         index = {"weight_map": index, "metadata": {"total_size": total_size}}
-        with open(save_dir + "model.safetensors.index.json", "w") as json_file:
+        with open(pjoin(save_dir, "model.safetensors.index.json"), "w") as json_file:
             json.dump(index, json_file)
