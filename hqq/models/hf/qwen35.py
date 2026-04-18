@@ -5,7 +5,7 @@ import copy
 
 from tqdm import tqdm
 
-from ..base import BasePatch
+from ..base import BasePatch, is_leaf_module
 from .base import BaseHQQHFModel
 
 
@@ -28,8 +28,10 @@ class Qwen35Patch(BasePatch):
     @classmethod
     def patch_nonlinearlayers(cls, model, patch_fct, verbose=True):
         # The text decoder lives at model.model.language_model, not model.model.
-        # The vision encoder (model.model.visual) is intentionally skipped here;
-        # callers are expected to move it to the target device in fp separately.
+        # The vision encoder (model.model.visual) is walked separately at the
+        # end of this method so its leaves get materialized off the meta device
+        # (init_empty_weights leaves them there until something assigns real
+        # tensors / moves them).
         text_model = model.model.language_model
 
         model.lm_head = patch_fct(model.lm_head)
@@ -61,6 +63,23 @@ class Qwen35Patch(BasePatch):
 
             if hasattr(layers[i].mlp, "act_fn"):
                 layers[i].mlp.act_fn = patch_fct(layers[i].mlp.act_fn)
+
+        if hasattr(model.model, "visual"):
+            cls._patch_subtree_leaves(model.model.visual, patch_fct, verbose)
+
+    @classmethod
+    def _patch_subtree_leaves(cls, root, patch_fct, verbose=True):
+        leaf_paths = [
+            name for name, module in root.named_modules()
+            if name and is_leaf_module(module)
+        ]
+        for path in tqdm(leaf_paths, disable=not verbose):
+            parts = path.split(".")
+            parent = root
+            for part in parts[:-1]:
+                parent = parent._modules[part]
+            last = parts[-1]
+            parent._modules[last] = patch_fct(parent._modules[last])
 
     @classmethod
     def patch_linearlayers(cls, model, patch_fct, patch_params, verbose=True):
