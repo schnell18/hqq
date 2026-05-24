@@ -98,6 +98,7 @@ def _allocate_boost_decline_configs(
         3.51: (3, 32),
         3.25: (3, 64),
         3.13: (3, 128),
+        3.02: (2, 16),
         2.51: (2, 32),
         2.25: (2, 64),
         2.13: (2, 128),
@@ -112,7 +113,7 @@ def _allocate_boost_decline_configs(
         if idx < 0:
             idx = 0
         elif idx >= len(sort_budgets):
-            idx = len(sort_budgets)
+            idx = len(sort_budgets) - 1
         return budget_map[sort_budgets[idx]]
 
     b1, g1 = budget_map[budget]
