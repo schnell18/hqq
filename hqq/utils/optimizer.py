@@ -306,19 +306,18 @@ def identify_sensitive_modules_ablation(
     top_m=1,
     diff_method="divide",
 ):
-    module_outliers_sensi = identify_sensitive_modules(
-        df, "sensitivity", top_m=top_m, diff_method="divide"
-    )
+    # module_outliers_sensi = identify_sensitive_modules(
+    #     df, "sensitivity", top_m=top_m, diff_method="divide"
+    # )
     module_outliers_kurt = identify_sensitive_modules(
         df, "kurtosis", top_m=top_m, diff_method="subtract"
     )
 
     module_outliers = {}
-    for module in module_outliers_sensi:
-        ls = module_outliers_sensi.get(module, [])
+    for module in module_outliers_kurt:
         lk = module_outliers_kurt.get(module, [])
-        top_layers = len(ls) if weight_algo == "sensi-boost" else len(lk)
-        layer_outliers = list(set(ls + lk))
+        top_layers = len(lk)
+        layer_outliers = list(set(lk))
         if top_layers > 0:
             module_outliers[module] = random.sample(
                 list(set(range(layers)) - set(layer_outliers)), top_layers
