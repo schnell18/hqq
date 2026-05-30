@@ -25,7 +25,7 @@ from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 # Train
-from trl import SFTTrainer
+from trl import SFTConfig, SFTTrainer
 
 # Add Peft
 ######################################################################################
@@ -104,7 +104,7 @@ batch_size = 1
 n_epochs = 2
 max_tokens = 1024
 
-training_args = transformers.TrainingArguments(
+training_args = SFTConfig(
     output_dir=".",
     per_device_train_batch_size=batch_size,
     gradient_accumulation_steps=grad_acc,
@@ -117,6 +117,9 @@ training_args = transformers.TrainingArguments(
     max_grad_norm=1.0,
     save_steps=10000000,
     lr_scheduler_type="cosine",
+    max_length=max_tokens,
+    dataset_text_field="text",
+    packing=True,
 )
 
 
@@ -141,14 +144,11 @@ class WrappedModel(torch.nn.Module):
 
 trainer = SFTTrainer(
     model=WrappedModel(model),
-    tokenizer=tokenizer,
-    max_seq_length=max_tokens,
+    processing_class=tokenizer,
     train_dataset=dataset,
     eval_dataset=None,
     peft_config=None,
     args=training_args,
-    dataset_text_field="text",
-    packing=True,
 )
 
 model.is_parallelizable = False
