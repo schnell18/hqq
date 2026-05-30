@@ -200,7 +200,7 @@ class HQQLinearLoRA(nn.Module):
             self.scaling = self.scaling.to(dtype)
         return self
 
-    def state_dict(self):
+    def state_dict(self, *args, **kwargs):
         return {
             "lora_A": self.lora_A.data,
             "lora_B": self.lora_B.data,
@@ -348,7 +348,7 @@ class HQQLinearGroupedProj(nn.Module):
                 self.bias = self.bias.to(dtype)
         return self
 
-    def state_dict(self):
+    def state_dict(self, *args, **kwargs):
         return {
             "proj": self.proj.data,
             "bias": self.bias,
