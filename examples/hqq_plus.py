@@ -141,6 +141,12 @@ class WrappedModel(torch.nn.Module):
     def parameters(self):
         return self.model.parameters()
 
+    def __getattr__(self, name):
+        try:
+            return super().__getattr__(name)
+        except AttributeError:
+            return getattr(self.model, name)
+
 
 trainer = SFTTrainer(
     model=WrappedModel(model),
